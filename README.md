@@ -71,7 +71,7 @@ external asset dependencies. Music and controller support are not included.
 - `scripts/interactable.gd`: chests, doors, shop terminals, and final exit.
 - `scripts/game.gd`: scene assembly, transitions, pause/restart, and overtime.
 - `scripts/hud.gd` and `scripts/palette.gd`: UI and visual theme.
-- `scripts/sound.gd`: original synthesized effects and mute control.
+- `scripts/sound.gd`: original synthesized effects, looping chiptune music, and mute control.
 
 Reusable `.tscn` scenes are in `scenes/player`, `scenes/enemies`,
 `scenes/levels`, and `scenes/ui`. Collision layers: 1 player, 2 world,
@@ -80,7 +80,7 @@ world/enemy layers, preventing tunnelling or self-damage.
 
 ## Validation and export
 
-From the project directory, using a Godot 4.4.1 executable named `godot`:
+From the project directory, using a Godot 4.7 executable named `godot`:
 
 ```sh
 godot --headless --editor --import --quit
