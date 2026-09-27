@@ -1,15 +1,17 @@
 ; Engine configuration file.
-; It's best edited using the Godot editor rather than manually.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
 ;
 ; Format:
-;   [section]
-;   param=value
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
 [application]
 
 config/name="Alberta Game Jam 2026"
+config/features=PackedStringArray("4.7")
 
 [display]
 

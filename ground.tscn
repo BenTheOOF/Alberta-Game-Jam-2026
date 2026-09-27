@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://b0n25nbk33gay"]
+
+[sub_resource type="TileSet" id="TileSet_6kjmv"]
+
+[sub_resource type="CanvasTexture" id="CanvasTexture_6kjmv"]
+
+[node name="Ground" type="Node2D" unique_id=1778656917]
+scale = Vector2(100, 100)
+
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=1429852481]
+modulate = Color(0, 0, 0, 1)
+self_modulate = Color(0, 0, 0, 1)
+tile_set = SubResource("TileSet_6kjmv")
+
+[node name="Sprite2D" type="Sprite2D" parent="TileMapLayer" unique_id=1707242574]
+texture = SubResource("CanvasTexture_6kjmv")
