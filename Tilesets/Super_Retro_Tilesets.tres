@@ -1,4 +1,4 @@
-[gd_resource type="TileSet" load_steps=7 format=3 uid="uid://m21v8yum2f4y"]
+[gd_resource type="TileSet" format=3 uid="uid://m21v8yum2f4y"]
 
 [ext_resource type="Texture2D" uid="uid://mobtxhybql5a" path="res://addons/SuperRetroWorld_Farming/Tilesets/SuperRetroWorld_Farming_Tileset.png" id="1_7fu64"]
 [ext_resource type="Texture2D" uid="uid://kug2h0t2pc37" path="res://addons/SuperRetroWorld_Farming/Tilesets/SuperRetroWorld_Farming_Autotile_Anim.png" id="2_88ot4"]

@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/bullet.gd" id="1"]
+[node name="Bullet" type="Area2D"]
+collision_layer = 8
+collision_mask = 6
+monitoring = false
+script = ExtResource("1")
