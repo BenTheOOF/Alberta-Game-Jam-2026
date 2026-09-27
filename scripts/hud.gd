@@ -230,8 +230,9 @@ func _draw_live() -> void:
 	if notice_left>0:
 		status = notice
 	var strip_color: Color = notice_color if notice_left>0 else Palette.MUTED
-	draw_style_box(Palette.box(Color(Palette.BG,0.92)),Rect2(74,158,840,28))
-	_text(status,Vector2(86,177),12,strip_color,816,HORIZONTAL_ALIGNMENT_CENTER)
+	# Keep encounter/status UI in the fixed header so enemies never run underneath it.
+	draw_style_box(Palette.box(Color(Palette.BG,0.96),Palette.LINE,4),Rect2(520,91,434,29))
+	_text(status,Vector2(532,111),11,strip_color,410,HORIZONTAL_ALIGNMENT_CENTER)
 	if not prompt.is_empty():
 		draw_style_box(Palette.box(Palette.BG,Palette.MINT,4),Rect2(102,575,784,37))
 		_text(prompt,Vector2(113,600),14,Palette.PAPER,762,HORIZONTAL_ALIGNMENT_CENTER)
