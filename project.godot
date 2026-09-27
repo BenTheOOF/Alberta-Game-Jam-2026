@@ -1,24 +1,17 @@
 ; Engine configuration file.
-; It's best edited using the Godot editor rather than manually.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
 ;
 ; Format:
-;   [section]
-;   param=value
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
 [application]
 
-config/name="Pay the Price"
-run/main_scene="res://scenes/main.tscn"
-config/features=PackedStringArray("4.4", "GL Compatibility")
-config/description="Everything has a price. Even getting out alive. Alberta Game Jam 2026."
-config/icon="res://assets/icon.svg"
-
-[autoload]
-
-Ledger="*res://scripts/ledger.gd"
-Sound="*res://scripts/sound.gd"
+config/name="Alberta Game Jam 2026"
+config/features=PackedStringArray("4.7")
 
 [display]
 
