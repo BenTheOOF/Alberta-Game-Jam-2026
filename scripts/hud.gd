@@ -1,10 +1,18 @@
 extends Control
 
+# Entire screen-space interface: title screen, in-run HUD and pause/end overlays.
+# The HUD reads game/Ledger state but does not decide purchases or win conditions.
+
+
+# Button actions are emitted upward to game.gd, which owns state transitions.
 signal start_requested
 signal resume_requested
 signal restart_requested
 signal menu_requested
 
+
+# Values copied from game.gd for drawing. They are presentation state, not authoritative
+# gameplay state; money itself always comes directly from Ledger.
 var mode: String = "menu"
 var room_index: int = 0
 var remaining: int = 0
@@ -22,6 +30,8 @@ var third: Button
 var age: float = 0.0
 var font: Font
 
+
+# Buttons are real Control nodes for input/focus; most other UI is drawn procedurally.
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -67,6 +77,8 @@ func _secondary() -> void:
 	else:
 		menu_requested.emit()
 
+
+# Configure which buttons/overlay layout are visible for menu, play, pause, win or loss.
 func set_mode(value: String) -> void:
 	mode = value
 	primary.visible = mode != "play"
@@ -90,6 +102,8 @@ func set_mode(value: String) -> void:
 		primary.grab_focus()
 	queue_redraw()
 
+
+# Maintain a short receipt-like history whenever Ledger emits money_changed.
 func _transaction(amount: int, delta: int, reason: String) -> void:
 	if delta == 0:
 		transactions.clear()
@@ -121,6 +135,9 @@ func _paragraph(value: String, at: Vector2, size_px: int, color: Color, spacing:
 		_text(line,Vector2(at.x,y),size_px,color)
 		y += spacing
 
+
+# Route drawing by mode. _draw_live() is shared underneath pause/win/loss overlays so
+# the player can still see the final state of the run.
 func _draw() -> void:
 	if font == null:
 		return
@@ -131,6 +148,8 @@ func _draw() -> void:
 	if mode != "play":
 		_draw_overlay()
 
+
+# Title screen is intentionally drawn from primitives to match the game's UI aesthetic.
 func _draw_title() -> void:
 	draw_rect(Rect2(0,0,1280,720),Palette.BG)
 	for x in range(0,1280,40):
@@ -173,6 +192,9 @@ func _draw_receipt(at: Vector2, dimensions: Vector2) -> void:
 	for x in range(int(at.x),int(at.x+dimensions.x)-10,14):
 		draw_colored_polygon(PackedVector2Array([Vector2(x,at.y+dimensions.y),Vector2(x+7,at.y+dimensions.y+7),Vector2(x+14,at.y+dimensions.y)]),Palette.PAPER)
 
+
+# In-run layout: fixed header, combat arena framing, right-side account statement and
+# bottom controls. Keep fixed HUD elements outside the playable arena whenever possible.
 func _draw_live() -> void:
 	draw_rect(Rect2(0,0,1280,124),Palette.BG)
 	_text("PAY THE",Vector2(32,39),15,Palette.MUTED)
@@ -237,6 +259,8 @@ func _draw_live() -> void:
 		draw_style_box(Palette.box(Palette.BG,Palette.MINT,4),Rect2(102,575,784,37))
 		_text(prompt,Vector2(113,600),14,Palette.PAPER,762,HORIZONTAL_ALIGNMENT_CENTER)
 
+
+# Semi-transparent modal layer used for pause and both end states.
 func _draw_overlay() -> void:
 	draw_rect(Rect2(0,0,1280,720),Color(Palette.BG,0.9))
 	draw_style_box(Palette.box(Palette.PANEL,Palette.LINE,12),Rect2(345,97,590,558))
