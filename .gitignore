@@ -19,3 +19,9 @@ Thumbs.db
 # Temporary files
 *.tmp
 *~
+
+# Exported binaries and local visual QA captures
+build/*
+!build/.gdignore
+dist/
+captures/

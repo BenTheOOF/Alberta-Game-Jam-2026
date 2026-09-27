@@ -1,0 +1,5 @@
+[gd_scene load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/money_popup.gd" id="1"]
+[node name="MoneyPopup" type="Node2D"]
+z_index = 20
+script = ExtResource("1")
