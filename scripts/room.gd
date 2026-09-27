@@ -76,6 +76,7 @@ func _draw() -> void:
 		for x in range(int(hazard.position.x)+8,int(hazard.end.x)-8,16):
 			draw_line(Vector2(x,hazard.position.y+8),Vector2(x+8,hazard.end.y-8),Color(color,0.5),2)
 	if index == 0:
+		# Keep tutorial labels in the safe left side of the room. Combat rules
+		# live in the account memo so enemies never pass underneath UI text.
 		draw_string(ThemeDB.fallback_font, Vector2(95,230), "W A S D", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Palette.BLUE)
 		draw_string(ThemeDB.fallback_font, Vector2(95,253), "MOVE / FREE", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Palette.MUTED)
-		draw_string(ThemeDB.fallback_font, Vector2(570,195), "COLLECTOR / 3 SHOTS / CONTACT -$5", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Palette.RED)
