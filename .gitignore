@@ -1,0 +1,21 @@
+# Godot 4+ generated files
+.godot/
+
+# Godot 3 generated import cache (harmless to keep ignored)
+.import/
+
+# Export credentials may contain secrets
+export_credentials.cfg
+
+# IDE / editor files
+.vscode/
+.idea/
+.vs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*~
