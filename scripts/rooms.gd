@@ -1,7 +1,22 @@
 class_name Rooms
 extends RefCounted
+
+# Static level-design data. Keeping encounter numbers here means balancing rooms does
+# not require editing the room-building/gameplay code.
+
 ## Hand-authored encounters. Coordinates are in the 1280 x 720 design canvas.
 ## Entries are [x, y, kind, reward]; kind: 0 collector, 1 tax man, 2 runner.
+
+# Dictionary schema (only some keys are used by every room):
+#   name/subtitle/memo : HUD text
+#   enemies            : [x, y, kind, reward]
+#   coins              : [x, y, amount]
+#   desks/hazards      : [x, y, width, height]
+#   chests             : [x, y]
+#   fee                : normal exit-door price
+#   shortcut/shop/exit : optional room features enabled by game.gd
+#
+# Room indices are also progression indices, so changing their order changes the run.
 const DATA: Array[Dictionary] = [
 	{"name":"INDUCTION", "subtitle":"Welcome aboard. Your life is now a liquid asset.", "memo":"MONEY IS YOUR LIFE.\nKeep $50 for the exit.\n\nMovement is free.\nShots and dashes cost cash.\n\nCOLLECTOR\n3 shots to clear.\nContact costs $5.", "enemies":[[720,380,0,5]], "coins":[[335,450,3],[385,450,3]], "desks":[], "chests":[], "fee":8},
 	{"name":"RISK MANAGEMENT", "subtitle":"Past performance does not guarantee future treasure.", "memo":"SEALED ASSETS\nPay $5. Find $2–$20.\nSome deals lose money.\n\nCollect gold coins to\nrecover your balance.", "enemies":[[650,240,0,4],[760,390,0,5],[640,530,2,3]], "coins":[[290,260,4]], "desks":[[420,330,95,38]], "chests":[[455,510]], "fee":10},

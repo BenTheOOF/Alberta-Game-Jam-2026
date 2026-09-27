@@ -1,14 +1,24 @@
 extends CharacterBody2D
 
+# Player controller.
+# The player asks Ledger to pay for actions; it never owns a separate health value.
+# Money therefore functions as health, ammunition, stamina and final score.
+
+
+# Signals keep projectile/effect creation in game.gd rather than coupling it here.
 signal fired(origin: Vector2, direction: Vector2)
 signal feedback(at: Vector2, text: String, color: Color)
 signal hurt
 
+
+# Designer-tunable movement/combat values. These appear in the Godot inspector.
 @export var movement_speed: float = 285.0
 @export var shot_interval: float = 0.23
 @export var dash_duration: float = 0.15
 @export var dash_cooldown: float = 0.8
 @export var dash_multiplier: float = 3.2
+
+# Runtime timers/directions. Values ending in "_wait" or "_left" count down to zero.
 var aim := Vector2.RIGHT
 var dash_direction := Vector2.RIGHT
 var dash_left: float = 0.0
@@ -20,6 +30,13 @@ var enabled: bool = true
 var shoot_armed: bool = false
 var trail: Array[Vector2] = []
 
+
+# Main movement loop:
+#   - update cooldowns and mouse aim,
+#   - read normalized WASD input,
+#   - attempt paid actions,
+#   - choose normal or dash velocity,
+#   - let CharacterBody2D resolve collisions.
 func _physics_process(delta: float) -> void:
 	if not enabled or not Ledger.active:
 		velocity = Vector2.ZERO
@@ -57,6 +74,8 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	queue_redraw()
 
+
+# Ignore clicks over the HUD/sidebar so UI interaction never accidentally buys a shot.
 func _mouse_in_arena() -> bool:
 	return Rect2(32, 126, 924, 522).has_point(get_global_mouse_position())
 
@@ -73,6 +92,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		try_shoot()
 		get_viewport().set_input_as_handled()
 
+
+# Attempting an action follows the same pattern: validate -> pay -> perform.
+# Charging first is important because spending the last dollar may end the run.
 func try_shoot() -> bool:
 	if not enabled or not Ledger.active or shot_wait > 0:
 		return false
@@ -88,6 +110,8 @@ func try_shoot() -> bool:
 		Sound.play("shot")
 	return true
 
+
+# Dash uses current movement direction when available; otherwise it follows aim.
 func try_dash(movement: Vector2) -> bool:
 	if not enabled or not Ledger.active or dash_wait > 0:
 		return false
@@ -102,6 +126,9 @@ func try_dash(movement: Vector2) -> bool:
 		Sound.play("dash")
 	return true
 
+
+# Returns whether damage was actually applied. Invulnerability and an active dash
+# both protect against rapid repeated contact charges.
 func take_hit(tax: bool = false, source: Vector2 = Vector2.ZERO) -> bool:
 	if not enabled or not Ledger.active or invulnerability > 0 or dash_left > 0:
 		return false
@@ -116,6 +143,9 @@ func take_hit(tax: bool = false, source: Vector2 = Vector2.ZERO) -> bool:
 	queue_redraw()
 	return true
 
+
+# Character art is drawn procedurally, so there is no sprite asset to keep in sync.
+# queue_redraw() from the physics loop animates bobbing, flashing and the dash trail.
 func _draw() -> void:
 	for i in trail.size():
 		draw_circle(to_local(trail[i]), 14, Color(Palette.MINT, 0.18 * (1.0 - float(i) / 5.0)))

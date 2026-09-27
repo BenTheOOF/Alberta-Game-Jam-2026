@@ -1,5 +1,11 @@
 extends CharacterBody2D
 
+# Shared script for all current enemy variants.
+# kind 0 = Collector, kind 1 = Tax Man, kind 2 = Runner. Their core chase logic is
+# identical; kind changes stats, damage rules, reward and visual styling.
+
+
+# game.gd listens for this to spawn the actual collectible payout.
 signal defeated(at: Vector2, reward: int, color: Color)
 @export_enum("Collector", "Tax man", "Runner") var kind: int = 0
 @export var hit_points: int = 3
@@ -13,6 +19,8 @@ var hit_wait: float = 0.0
 var alive: bool = true
 var age: float = 0.0
 
+
+# Apply variant-specific stats after exported/default values have loaded.
 func _ready() -> void:
 	if kind == 1:
 		hit_points = 4
@@ -21,6 +29,9 @@ func _ready() -> void:
 		hit_points = 2
 		speed = 148
 
+
+# Simple chase AI with lightweight obstacle steering. The short ray checks whether
+# furniture/walls block the direct route; if so, the enemy tries a perpendicular side.
 func _physics_process(delta: float) -> void:
 	if not alive or not Ledger.active or not is_instance_valid(target):
 		return
@@ -43,6 +54,9 @@ func _physics_process(delta: float) -> void:
 			hit_wait = 1.0
 	queue_redraw()
 
+
+# Bullets call this method through hit.collider.has_method("take_damage").
+# Stagger briefly replaces chase velocity with knockback for readable hit feedback.
 func take_damage(amount: int, from_direction: Vector2 = Vector2.RIGHT) -> void:
 	if not alive or not Ledger.active:
 		return
@@ -60,9 +74,13 @@ func take_damage(amount: int, from_direction: Vector2 = Vector2.RIGHT) -> void:
 		queue_free()
 	queue_redraw()
 
+
+# Variant colour doubles as a gameplay cue: gold is the percentage-based Tax Man.
 func _color() -> Color:
 	return Palette.GOLD if kind == 1 else (Palette.RED if kind == 0 else Color("d99bea"))
 
+
+# Enemies are procedural vector/pixel-like drawings rather than external sprites.
 func _draw() -> void:
 	var color: Color = Palette.PAPER if flash > 0 else _color()
 	var bob: float = sin(age * 7) * 1.3

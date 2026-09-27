@@ -1,12 +1,21 @@
 extends Node
+
+# Audio singleton (autoloaded as "Sound").
+# Both SFX and music are generated in memory, so the project has no external audio files.
+
 ## Original synthesized SFX plus a lightweight looping chiptune.
 ## No downloads, licensed tracks, or external audio dependencies.
+
+# A small player pool allows overlapping effects (for example hit + coin) without
+# creating/destroying AudioStreamPlayer nodes during gameplay.
 var sounds: Dictionary = {}
 var voices: Array[AudioStreamPlayer] = []
 var voice: int = 0
 var muted: bool = false
 var music_player: AudioStreamPlayer
 
+
+# Build all audio streams once at startup, then begin the background loop.
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	for i in 10:
@@ -34,6 +43,9 @@ func _ready() -> void:
 	music_player.finished.connect(_restart_music)
 	music_player.play()
 
+
+# Round-robin through the voice pool; assigning a new stream to one voice only replaces
+# that voice, leaving other simultaneous effects untouched.
 func play(id: String) -> void:
 	if muted or not sounds.has(id):
 		return
@@ -42,6 +54,8 @@ func play(id: String) -> void:
 	player.stream = sounds[id]
 	player.play()
 
+
+# Muting stops existing audio as well as blocking new SFX. Unmuting restarts music.
 func toggle_mute() -> void:
 	muted = not muted
 	if muted:
@@ -56,6 +70,9 @@ func _restart_music() -> void:
 	if not muted and is_instance_valid(music_player):
 		music_player.play()
 
+
+# Generate a short two-oscillator WAV with a fast attack/decay envelope.
+# Frequency sweeps create different arcade-style effects from the same function.
 func _tone(start: float, finish: float, duration: float) -> AudioStreamWAV:
 	var wav := AudioStreamWAV.new()
 	wav.format = AudioStreamWAV.FORMAT_16_BITS
@@ -73,12 +90,17 @@ func _tone(start: float, finish: float, duration: float) -> AudioStreamWAV:
 	wav.data = bytes
 	return wav
 
+
+# Helpers used by the procedural music synthesizer.
 func _note_hz(midi_note: int) -> float:
 	return 440.0 * pow(2.0, (float(midi_note) - 69.0) / 12.0)
 
 func _square(phase: float) -> float:
 	return 1.0 if sin(phase) >= 0.0 else -1.0
 
+
+# Render the whole music loop into one WAV at startup. Runtime playback is therefore
+# cheap: Godot simply plays the finished buffer and restarts it when it ends.
 func _music_loop() -> AudioStreamWAV:
 	# 16 seconds at 120 BPM: four compact retro-finance bars.
 	var wav := AudioStreamWAV.new()

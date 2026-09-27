@@ -1,10 +1,20 @@
 extends Node
+
+# Economy/state singleton (autoloaded as "Ledger").
+# IMPORTANT: no gameplay script should change money directly. Using the methods
+# here guarantees that the HUD, bankruptcy logic and statistics stay in sync.
+
 ## The only owner of the balance. Every transaction goes through this ledger.
+# Signals let gameplay/UI react without hard references back into this singleton.
 signal money_changed(amount: int, difference: int, reason: String)
 signal bankrupt
 signal won
 signal prices_changed
 
+
+# Core economy constants and run state.
+# "active" gates all transactions so nothing can charge/reward the player after
+# victory or bankruptcy.
 const STARTING_MONEY: int = 100
 const EXIT_FEE: int = 50
 var money: int = STARTING_MONEY
@@ -12,6 +22,8 @@ var active: bool = false
 var room_index: int = 0
 var inflated: bool = false
 var upgrades: Dictionary = {}
+
+# Statistics are presentation-only; they never determine whether a purchase is valid.
 var earned: int = 0
 var spent: int = 0
 var damage_paid: int = 0
@@ -20,6 +32,8 @@ var dashes: int = 0
 var kills: int = 0
 var elapsed: float = 0.0
 
+
+# Restore every value that must not leak from one attempt into the next.
 func reset_run() -> void:
 	money = STARTING_MONEY
 	active = true
@@ -36,6 +50,9 @@ func reset_run() -> void:
 	money_changed.emit(money, 0, "OPENING BALANCE")
 	prices_changed.emit()
 
+
+# Prices are queried instead of stored on the player so inflation/upgrades take
+# effect immediately everywhere that displays or charges a price.
 func shot_cost() -> int:
 	return 2 if inflated else 1
 
@@ -45,6 +62,9 @@ func dash_cost() -> int:
 func can_afford(amount: int) -> bool:
 	return active and amount >= 0 and money >= amount
 
+
+# Normal purchases can cause bankruptcy. Return false without changing state when
+# the player cannot afford the requested amount.
 func spend_money(amount: int, reason: String = "PURCHASE") -> bool:
 	if not can_afford(amount):
 		return false
@@ -53,12 +73,16 @@ func spend_money(amount: int, reason: String = "PURCHASE") -> bool:
 	_check_bankruptcy()
 	return true
 
+
+# Positive transactions (coins, chests, overtime) are ignored once a run has ended.
 func gain_money(amount: int, reason: String = "CREDIT") -> void:
 	if not active or amount <= 0:
 		return
 	earned += amount
 	_change(amount, reason)
 
+
+# Damage is clamped to the remaining balance so money never becomes negative.
 func lose_money(amount: int, reason: String = "PAIN FEE") -> void:
 	if not active or amount <= 0:
 		return
@@ -67,6 +91,10 @@ func lose_money(amount: int, reason: String = "PAIN FEE") -> void:
 	_change(-actual, reason)
 	_check_bankruptcy()
 
+
+# The exit is intentionally special: paying exactly $50 leaves $0 but still wins.
+# Therefore we deactivate the run BEFORE subtracting the fee and do not call the
+# normal bankruptcy check.
 func pay_exit() -> bool:
 	if not can_afford(EXIT_FEE):
 		return false
@@ -78,6 +106,8 @@ func pay_exit() -> bool:
 	won.emit()
 	return true
 
+
+# Upgrades are stored as dictionary keys because they are one-time boolean unlocks.
 func buy_upgrade(id: String, cost: int) -> bool:
 	if upgrades.has(id) or not spend_money(cost, "UPGRADE"):
 		return false
@@ -93,6 +123,9 @@ func apply_inflation() -> void:
 	inflated = true
 	prices_changed.emit()
 
+
+# Internal mutation point. Centralizing the actual assignment means every change
+# emits the same money_changed signal used by the HUD and floating popups.
 func _change(delta: int, reason: String) -> void:
 	money = maxi(0, money + delta)
 	money_changed.emit(money, delta, reason)

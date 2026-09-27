@@ -1,5 +1,15 @@
 extends Node2D
 
+# Main gameplay coordinator.
+# This script does not own the money rules or actor behaviour; instead it:
+#   1. builds each department from Rooms.DATA,
+#   2. wires player/enemy/interactable signals together,
+#   3. manages high-level states such as menu, play, pause, win and loss,
+#   4. owns temporary room effects such as particles and overtime.
+# Keeping those jobs here makes the smaller actor scripts reusable and focused.
+
+
+# Reusable scenes instantiated while a room is being assembled.
 const PLAYER := preload("res://scenes/player/player.tscn")
 const BULLET := preload("res://scenes/player/bullet.tscn")
 const ENEMY := preload("res://scenes/enemies/collector.tscn")
@@ -8,6 +18,9 @@ const INTERACTION := preload("res://scenes/levels/interactable.tscn")
 const ROOM := preload("res://scenes/levels/room.tscn")
 const POPUP := preload("res://scenes/ui/money_popup.tscn")
 const HUD := preload("res://scripts/hud.gd")
+
+# References to nodes that exist for the current run/room.
+# "world" contains disposable room content, while the HUD/camera survive room changes.
 var world: Node2D
 var player
 var room
@@ -27,6 +40,9 @@ var overtime_spawn: float = 0.0
 var last_popup_ms: int = -1000
 var popup_stack: int = 0
 
+
+# One-time application setup. Most scene nodes are created in code so the exported
+# game only needs scenes/main.tscn as its entry point.
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	world = Node2D.new()
@@ -53,6 +69,9 @@ func _ready() -> void:
 	# Opening an exported game requires no editor configuration.
 	Ledger.active = false
 
+
+# Start (or restart) a completely fresh run. Ledger.reset_run() is responsible
+# for clearing all economy/stat state; load_room() rebuilds the physical room.
 func start_run() -> void:
 	get_tree().paused = false
 	_clear_world()
@@ -62,6 +81,10 @@ func start_run() -> void:
 	hud.set_mode("play")
 	load_room(0)
 
+
+# Remove everything that belongs only to the current department.
+# This is deliberately separate from Ledger.reset_run(): changing rooms should
+# clear actors/props without resetting the player's money or upgrades.
 func _clear_world() -> void:
 	for child in world.get_children():
 		world.remove_child(child)
@@ -78,6 +101,9 @@ func _clear_world() -> void:
 	hud.overtime = 0
 	transitioning = false
 
+
+# Build one department from its data entry. This is the central room factory:
+# walls first, then player/actors, then special room-specific mechanics.
 func load_room(index: int) -> void:
 	_clear_world()
 	Ledger.room_index = index
@@ -131,6 +157,9 @@ func load_room(index: int) -> void:
 	hud.remaining = _living_enemies()
 	door.locked = hud.remaining > 0
 
+
+# Small factory helpers below keep load_room() readable and ensure all spawned
+# objects receive the same signal wiring and parent nodes.
 func _interaction(kind: String, at: Vector2, price: int, title: String):
 	var item = INTERACTION.instantiate()
 	item.position = at
@@ -171,6 +200,9 @@ func _fire(at: Vector2, direction: Vector2) -> void:
 	actors.add_child(bullet)
 	burst(at+direction*28,Palette.MINT,3)
 
+
+# Per-frame run-level work: timer, camera shake, door locking, interaction
+# highlighting, and the optional overtime event. Actor movement stays in actors.
 func _process(delta: float) -> void:
 	if mode != "play" or not Ledger.active or not is_instance_valid(player):
 		return
@@ -193,6 +225,9 @@ func _living_enemies() -> int:
 			count += 1
 	return count
 
+
+# Find the closest unused interactable within 86 px. Only that object is
+# highlighted and allowed to provide the on-screen [E] prompt.
 func _update_interaction() -> void:
 	nearest = null
 	var nearest_distance: float = 86.0
@@ -209,6 +244,9 @@ func _update_interaction() -> void:
 		nearest.highlighted = true
 		hud.prompt = nearest.prompt()
 
+
+# Global controls live here because they affect game state rather than one actor.
+# Movement/shooting/dashing are handled by player.gd.
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("mute"):
 		Sound.toggle_mute()
@@ -269,6 +307,9 @@ func _win() -> void:
 	get_tree().paused = true
 	Sound.play("win")
 
+
+# Convert Ledger transactions into world-space feedback. Rapid transactions are
+# vertically stacked so multiple price popups remain readable.
 func _on_money_changed(_amount: int, delta: int, reason: String) -> void:
 	if delta == 0 or not is_instance_valid(player):
 		return
@@ -300,6 +341,9 @@ func burst(at: Vector2, color: Color, count: int = 6) -> void:
 		tween.tween_property(spark,"modulate:a",0.0,0.3)
 		tween.chain().tween_callback(spark.queue_free)
 
+
+# Final-room recovery mechanic. A player below the $50 exit reserve can take a
+# short combat shift for $25 instead of becoming permanently stuck.
 func _start_overtime() -> void:
 	# A skill-based recovery option avoids a permanently unaffordable final exit.
 	# It only pays until the exit is affordable, so it cannot farm high scores.

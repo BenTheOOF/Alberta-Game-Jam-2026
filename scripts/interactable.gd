@@ -1,5 +1,11 @@
 extends Node2D
 
+# One script handles every stationary purchase/terminal.
+# "kind" chooses the rule set; the scene is otherwise the same lightweight Node2D.
+
+
+
+# Signals let an interactable request a room transition/message without knowing game.gd.
 signal advance_requested
 signal message(value: String, color: Color)
 @export_enum("door", "chest", "exit", "shortcut", "upgrade", "overtime") var kind: String = "door"
@@ -7,6 +13,11 @@ signal message(value: String, color: Color)
 @export var title: String = "NEXT DEPARTMENT"
 @export var upgrade_id: String = ""
 @export var detail: String = ""
+
+# Interaction state:
+#   used        = single-use transaction already completed,
+#   locked      = blocked until encounter requirements are met,
+#   highlighted = currently the nearest object selected by game.gd.
 var used: bool = false
 var locked: bool = false
 var highlighted: bool = false
@@ -16,6 +27,9 @@ func _process(delta: float) -> void:
 	age += delta
 	queue_redraw()
 
+
+# Pure presentation function: describe what pressing E would do right now.
+# No money is changed until interact() runs.
 func prompt() -> String:
 	if used:
 		return "PURCHASED" if kind == "upgrade" else "TRANSACTION COMPLETE"
@@ -31,6 +45,9 @@ func prompt() -> String:
 		return "[E] %s  /  $%d" % [detail, price]
 	return "[E] %s  /  %s" % [title, "$%d" % price if price > 0 else "NO FEE"]
 
+
+# Execute the transaction. Each branch either delegates payment to Ledger or handles
+# a special rule (exit, overtime, upgrade). "used" prevents accidental double charges.
 func interact() -> bool:
 	if used or locked or not Ledger.active:
 		return false
@@ -72,10 +89,15 @@ func interact() -> bool:
 		advance_requested.emit()
 	return true
 
+
+# Shared declined-purchase feedback keeps all terminals sounding/looking consistent.
 func _deny(value: String) -> void:
 	Sound.play("deny")
 	message.emit(value, Palette.RED)
 
+
+# Draw the terminal/chest/door directly from state so locked, used and highlighted
+# objects are always visually consistent with their interaction rules.
 func _draw() -> void:
 	var color: Color = Palette.GOLD if kind == "chest" else Palette.MINT
 	if kind == "upgrade" or kind == "overtime":

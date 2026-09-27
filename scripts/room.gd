@@ -1,5 +1,10 @@
 extends Node2D
 
+# Physical/environmental representation of one department.
+# Encounter contents (enemy positions, fees, etc.) live in rooms.gd; this script turns
+# the environment parts of that data into collision and procedural visuals.
+
+
 var index: int = 0
 var config: Dictionary = {}
 var age: float = 0.0
@@ -7,6 +12,8 @@ var desks: Array[Rect2] = []
 var hazards: Array[Rect2] = []
 var target: Node2D
 
+
+# Construct static collision once when the department loads.
 func build(room_index: int) -> void:
 	index = room_index
 	config = Rooms.DATA[index]
@@ -22,6 +29,8 @@ func build(room_index: int) -> void:
 		hazards.append(Rect2(h[0], h[1], h[2], h[3]))
 	queue_redraw()
 
+
+# Convert a simple Rect2 definition into a physics wall.
 func _wall(rect: Rect2) -> void:
 	var body := StaticBody2D.new()
 	body.position = rect.get_center()
@@ -34,6 +43,9 @@ func _wall(rect: Rect2) -> void:
 	body.add_child(shape)
 	add_child(body)
 
+
+# Hazards pulse on a shared cycle. During the active/red phase, standing inside one
+# calls the same player damage function used by enemies.
 func _physics_process(delta: float) -> void:
 	if not Ledger.active:
 		return
@@ -44,6 +56,9 @@ func _physics_process(delta: float) -> void:
 				target.take_hit(false, hazard.get_center())
 	queue_redraw()
 
+
+# Everything below is presentation only: floor grid, furniture, hazard telegraphs
+# and the small first-room movement hint.
 func _draw() -> void:
 	draw_style_box(Palette.box(Palette.BG, Palette.LINE, 10), Rect2(31,125,926,524))
 	draw_rect(Rect2(52,146,884,482), Palette.FLOOR)
