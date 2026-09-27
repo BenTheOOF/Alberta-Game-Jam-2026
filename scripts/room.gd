@@ -1,5 +1,8 @@
 extends Node2D
 
+## Owns static walls, navigation, floor fees and room visuals.
+## Receives a generated config; does not choose enemies, difficulty, or progression.
+
 var index: int = 0
 var config: Dictionary = {}
 var age: float = 0.0
@@ -9,11 +12,12 @@ var target: Node2D
 var tolls: Array[Rect2] = []
 var toll_inside: Dictionary = {}
 var previous_position := Vector2(140,390)
+var navigation := AStarGrid2D.new()
 
 # Construct static collision once when the department loads.
-func build(room_index: int) -> void:
+func build(room_index: int, room_config: Dictionary = {}) -> void:
 	index = room_index
-	config = Rooms.DATA[index]
+	config = room_config if not room_config.is_empty() else Rooms.DATA[index]
 	_wall(Rect2(32, 126, 924, 20))
 	_wall(Rect2(32, 628, 924, 20))
 	_wall(Rect2(32, 146, 20, 482))
@@ -26,6 +30,7 @@ func build(room_index: int) -> void:
 		hazards.append(Rect2(h[0], h[1], h[2], h[3]))
 	for t in config.get("tolls",[]):
 		tolls.append(Rect2(t[0],t[1],t[2],t[3]))
+	_build_navigation()
 	queue_redraw()
 
 # Convert a simple Rect2 definition into a physics wall.
@@ -149,3 +154,28 @@ func _checkpoint(at: Vector2, label: String, done: bool) -> void:
 func _sign(at: Vector2, title: String, sub: String, tint: Color) -> void:
 	draw_string(Palette.font(),at,title,HORIZONTAL_ALIGNMENT_LEFT,-1,22,tint)
 	draw_string(Palette.font(),at+Vector2(0,24),sub,HORIZONTAL_ALIGNMENT_LEFT,-1,16,Palette.MUTED)
+
+# Build walkable cells once per authored layout, never per frame. A small clearance
+# keeps large enemies away from desk edges and leaves the player route connected.
+func _build_navigation() -> void:
+	navigation.region = Rect2i(2,5,27,14)
+	navigation.cell_size = Vector2(32,32)
+	navigation.offset = Vector2(16,16)
+	navigation.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	navigation.update()
+	for x in range(2,29):
+		for y in range(5,19):
+			var at := Vector2(x*32+16,y*32+16)
+			var solid: bool = false
+			for desk in desks:
+				if desk.grow(20).has_point(at): solid = true
+			navigation.set_point_solid(Vector2i(x,y),solid)
+
+func navigation_direction(from: Vector2, to: Vector2) -> Vector2:
+	var start := Vector2i(floori(from.x/32),floori(from.y/32))
+	var finish := Vector2i(floori(to.x/32),floori(to.y/32))
+	start = start.clamp(Vector2i(2,5),Vector2i(28,18))
+	finish = finish.clamp(Vector2i(2,5),Vector2i(28,18))
+	if navigation.is_point_solid(start) or navigation.is_point_solid(finish): return (to-from).normalized()
+	var path: PackedVector2Array = navigation.get_point_path(start,finish,true)
+	return (path[1]-from).normalized() if path.size()>1 else (to-from).normalized()

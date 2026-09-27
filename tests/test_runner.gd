@@ -23,6 +23,7 @@ func _ready() -> void:
 	if not Sound.muted: Sound.toggle_mute()
 	Ledger.bankrupt.connect(func(): bankruptcy_count+=1)
 	Ledger.won.connect(func(): wins+=1)
+	_test_generator()
 	await _test_ledger()
 	game = load("res://scenes/main.tscn").instantiate()
 	add_child(game)
@@ -39,6 +40,7 @@ func _ready() -> void:
 	await _test_new_mechanics()
 	await _test_progression()
 	await _test_endings()
+	await _test_expansion()
 	print("RESULT: %d checks / %d failures" % [checks,failures])
 	get_tree().paused = false
 	game.queue_free()
@@ -174,7 +176,7 @@ func _test_combat() -> void:
 	game.start_run()
 	game.load_room(3)
 	await frames(2)
-	var chase = get_tree().get_nodes_in_group("enemies")[0]
+	var chase = game._spawn_enemy(Vector2(700,390),0,6)
 	var distance: float = chase.position.distance_to(game.player.position)
 	await frames(30)
 	check(chase.position.distance_to(game.player.position)<distance-30,"Collectors chase player")
@@ -228,7 +230,9 @@ func _test_interactions() -> void:
 
 func finish_encounter() -> void:
 	game.room_age = float(Rooms.DATA[Ledger.room_index].get("duration",0))+1
-	game.wave_index = Rooms.DATA[Ledger.room_index].get("waves",[]).size()
+	game.wave_index = game.total_waves
+	game.room_queue.clear()
+	if is_instance_valid(game.boss): game.boss.take_damage(game.boss.max_hp)
 	for entry in game.pending_spawns:
 		if is_instance_valid(entry.marker): entry.marker.queue_free()
 	game.pending_spawns.clear()
@@ -275,7 +279,7 @@ func _test_tutorial() -> void:
 
 func _test_new_mechanics() -> void:
 	game.start_run()
-	game.load_room(11)
+	game.load_room(Rooms.EXIT_INDEX)
 	var player = game.player
 	check(Ledger.buy_upgrade("insurance",15) and Ledger.insurance,"Insurance can be purchased")
 	var before: int = Ledger.money
@@ -316,7 +320,7 @@ func _test_new_mechanics() -> void:
 	game.room.charge_tolls(Vector2(680,390),Vector2(600,390))
 	check(Ledger.money==95,"Re-entering a toll tile is a new disclosed charge")
 	game.start_run()
-	game.load_room(11)
+	game.load_room(Rooms.EXIT_INDEX)
 	game.player.position = Vector2(200,390)
 	game._invoice(Vector2(300,390),Vector2.LEFT)
 	await frames(30)
@@ -351,12 +355,13 @@ func _test_new_mechanics() -> void:
 	await remove_enemies()
 	game.wave_wait = 0.01
 	await frames(3)
-	check(game.pending_spawns.size()==3 and game._living_enemies()==0,"Next shift first shows arrival warnings")
+	check(game.pending_spawns.size()>0 and game._living_enemies()==0,"Next shift first shows arrival warnings")
 	await frames(85)
-	check(game.pending_spawns.is_empty() and game._living_enemies()==3 and game.door.locked,"Telegraphed wave spawns and keeps exit locked")
+	check(game.pending_spawns.is_empty() and game._living_enemies()>0 and game.door.locked,"Telegraphed wave spawns and keeps exit locked")
 	game.start_run()
 	game.load_room(7)
-	game.wave_index = Rooms.DATA[7].waves.size()
+	game.wave_index = game.total_waves
+	game.room_queue.clear()
 	game.room_age = 78.0
 	await remove_enemies()
 	check(game.door.locked and Ledger.money==100,"Transfer remains locked until its timer settles")
@@ -366,13 +371,13 @@ func _test_new_mechanics() -> void:
 	await frames(8)
 	check(Ledger.money==112,"Settlement bonus cannot be paid repeatedly")
 	game.start_run()
-	game.load_room(11)
+	game.load_room(Rooms.EXIT_INDEX)
 	var runner = game._spawn_enemy(game.player.position+Vector2(24,0),2,4)
 	await frames(3)
 	check(Ledger.money==97,"Fast collection agent charges the lower $3 fee")
 	runner.queue_free()
 	game.start_run()
-	game.load_room(11)
+	game.load_room(Rooms.EXIT_INDEX)
 	Ledger.lose_money(95)
 	game.player.take_hit(true)
 	check(Ledger.money==1,"Tax minimum is $4 at a low balance")
@@ -395,14 +400,14 @@ func _test_progression() -> void:
 	game.start_run()
 	Ledger.tutorial_flags = {"checkpoint2":true,"health":true,"dash_gate":true}
 	await frames(2)
-	for index in 11:
+	for index in Rooms.DATA.size()-1:
 		check(Ledger.room_index==index,"Progression reaches department %d" % (index+1))
 		await finish_encounter()
 		check(game.door.interact(),"Department %d door works" % (index+1))
 		await frames(30)
-	check(Ledger.room_index==11 and Ledger.money==117,"Twelve-room logical route charges $30 tolls and pays $47 settlements")
+	check(Ledger.room_index==Rooms.EXIT_INDEX and Ledger.money==165,"Procedural route, boss and settlements preserve the disclosed economy")
 	check(Ledger.inflated and Ledger.shot_cost()==2,"Market event changes live prices")
-	check(game.door.interact() and game.mode=="won" and Ledger.money==67,"Complete route can pay exit and win")
+	check(game.door.interact() and game.mode=="won" and Ledger.money==115,"Complete route can pay exit and win")
 	check(not Sound.music.playing,"Victory stops gameplay music")
 	game.start_run()
 	await frames(2)
@@ -413,23 +418,172 @@ func _test_endings() -> void:
 	Ledger.lose_money(999)
 	check(game.mode=="lost" and get_tree().paused,"Bankruptcy shows loss and freezes game")
 	game.start_run()
-	game.load_room(11)
+	game.load_room(Rooms.EXIT_INDEX)
 	Ledger.lose_money(51)
 	check(not game.door.interact() and Ledger.money==49 and game.mode=="play","Final gate rejects underfunded player")
 	check(game.overtime_terminal.interact(),"Underfunded player can start overtime for free")
-	check(game.overtime_left==15 and Ledger.money==49,"Overtime has 15-second survival target, no entry cost")
+	check(game.overtime_session.left==30 and Ledger.money==49,"Overtime has 30-second survival target, no entry cost")
 	game.player.position = Vector2(85,580)
-	game.overtime_left = 0.02
-	game.overtime_spawn = 1.0
+	game.overtime_session.left = 0.02
+	game.overtime_session.spawn_left = 1.0
 	await frames(5)
-	check(Ledger.money==74 and not game.overtime_terminal.used,"Overtime pays $25 and resets terminal")
+	check(Ledger.money==74 and game.overtime_terminal.used,"Overtime pays $25 and consumes this terminal")
 	game.overtime_terminal.interact()
-	check(game.overtime_left==0 and Ledger.money==74,"Overtime cannot farm score above exit reserve")
+	check(game.overtime_left==0 and Ledger.money==74,"Overtime terminal cannot pay twice")
 	game.start_run()
-	game.load_room(11)
+	game.load_room(Rooms.EXIT_INDEX)
 	Ledger.lose_money(50)
 	var old_bankruptcies: int = bankruptcy_count
 	check(game.door.interact() and game.mode=="won" and Ledger.money==0,"Exact-$50 final gate triggers victory UI")
 	check(bankruptcy_count==old_bankruptcies,"Exit at zero never also triggers bankruptcy")
 	game.show_menu()
 	check(game.mode=="menu" and not get_tree().paused and not Ledger.active,"Return to title clears paused state")
+
+func _test_generator() -> void:
+	var safe: bool = true
+	var unlocks: bool = true
+	var budgets: bool = true
+	var solvent: bool = true
+	var layouts: Dictionary = {}
+	var totals: Dictionary = {}
+	var fingerprints: Dictionary = {}
+	for mode in DifficultySettings.MODES:
+		var mode_cost: int = 0
+		var enemy_count: int = 0
+		var elites: int = 0
+		for seed_value in 100:
+			var generator := EncounterGenerator.new()
+			generator.begin(mode,seed_value+1)
+			var expected_money: int = 88
+			for index in range(3,Rooms.BOSS_INDEX):
+				var config: Dictionary = generator.generate(index,100)
+				expected_money -= config.fee
+				expected_money += config.get("bonus",0)
+				if config.get("shop",false): continue
+				layouts[config.template_id] = true
+				var cost: int = 0
+				for entry in config.spawn_plan:
+					cost += entry.cost
+					enemy_count += 1
+					if entry.elite: elites += 1
+					safe = safe and RoomTemplates.safe(entry.at,config,RoomTemplates.SPAWN)
+					unlocks = unlocks and EnemyData.DEFINITIONS[entry.kind].min_room<=config.standard_room
+					unlocks = unlocks and (not entry.elite or config.standard_room>=5)
+					var unit: Dictionary = EnemyData.scaled(entry.kind,mode,entry.elite)
+					expected_money += entry.reward-unit.hp*(2 if index>=8 else 1)
+				budgets = budgets and cost==config.encounter_budget and cost==config.spent_budget
+				mode_cost += cost
+				if index==3: fingerprints[str(config.spawn_plan)] = true
+			expected_money -= DifficultySettings.profile(mode).boss_hp*2
+			expected_money += DifficultySettings.profile(mode).boss_cash
+			solvent = solvent and expected_money>=50
+		totals[mode] = mode_cost
+		print("BALANCE %s: mean budget %.2f / enemies %d / elites %d (100 seeds)"%[mode,float(mode_cost)/800,enemy_count,elites])
+	check(safe,"400 generated runs use sockets clear of walls, props, hazards and player")
+	check(unlocks,"Enemy unlocks and elite introduction obey progression across 400 seeds")
+	check(budgets,"Generated compositions spend exactly their difficulty budgets")
+	check(solvent,"Every sampled mode can fund perfect-aim combat, boss and $50 exit without optional purchases")
+	check(layouts.size()==8,"All eight authored layout templates appear in sampled runs")
+	check(fingerprints.size()>50,"Different seeds create varied early encounter compositions")
+	check(totals.easy<totals.normal and totals.normal<totals.hard and totals.hard<totals.brutal,"Encounter budgets rise monotonically with difficulty")
+	var first := EncounterGenerator.new()
+	var second := EncounterGenerator.new()
+	first.begin("hard",98765)
+	second.begin("hard",98765)
+	var equal: bool = true
+	for index in Rooms.DATA.size():
+		equal = equal and var_to_str(first.generate(index,100))==var_to_str(second.generate(index,100))
+	check(equal,"Same seed reproduces every layout, enemy composition and room feature")
+	check(first.budget_for(1)<first.budget_for(10),"Budget scales with depth within one difficulty")
+
+func _test_expansion() -> void:
+	game.show_menu()
+	game.hud._select_difficulty("hard")
+	game.start_run(12345)
+	check(Ledger.difficulty_id=="hard" and Ledger.run_seed==12345,"Selected difficulty and seed reach the new run")
+	game.start_run(12345)
+	check(Ledger.difficulty_id=="hard","Restart retains selected difficulty")
+	var basic: Dictionary = EnemyData.scaled(0,"easy")
+	var hard: Dictionary = EnemyData.scaled(0,"hard")
+	check(hard.hp>basic.hp and hard.speed>basic.speed and hard.fee>basic.fee,"Difficulty scales enemy HP, movement and financial damage")
+	Ledger.record_defeat(0,false,false)
+	Ledger.record_room(3)
+	var expected: int = Ledger.money+10+100
+	check(Ledger.base_score()==expected and Ledger.final_score()==expected*2,"Score breakdown applies Hard x2 exactly once")
+	Ledger.record_room(3)
+	check(Ledger.base_score()==expected,"Room score cannot be awarded twice")
+	game.hud._select_difficulty("easy")
+	game.start_run(37)
+	game.load_room(Rooms.BOSS_INDEX)
+	check(is_instance_valid(game.boss) and game.boss.max_hp==60 and game.door.locked,"CEO spawns at the fixed milestone and locks progression")
+	game.player.enabled = false
+	game.boss.take_damage(22)
+	check(game.boss.phase==2,"CEO enters phase two near 65% HP")
+	game.boss.take_damage(21)
+	check(game.boss.phase==3,"CEO enters phase three near 30% HP")
+	game.boss.zone_left = 0
+	game.boss.state_left = 0
+	await frames(3)
+	check(get_tree().get_nodes_in_group("boss_zones").size()>0 and game.boss.state=="warning","Final CEO phase produces fee telegraphs and a warned charge")
+	for i in 30: game.queue_enemy(0,4)
+	check(game.pending_spawns.size()+game._living_enemies()<=6,"Boss summon reservations respect the live enemy cap")
+	game.boss.take_damage(999)
+	await frames(3)
+	check(Ledger.boss_defeated and Ledger.money==130 and not game.door.locked,"Boss defeat pays severance, removes summons and unlocks final route")
+	check(get_tree().get_nodes_in_group("boss_zones").is_empty(),"Boss defeat removes outstanding fee zones")
+	game.start_run()
+	game.load_room(Rooms.EXIT_INDEX)
+	check(game.overtime_terminal.interact() and game.overtime_session.active,"Healthy accounts can choose optional overtime for extra score")
+	game.overtime_session.advance(0.1)
+	game._update_arrivals(1.4)
+	await frames(2)
+	var foes = get_tree().get_nodes_in_group("overtime_enemies")
+	check(foes.size()>0 and foes[0].max_hp>EnemyData.DEFINITIONS[foes[0].kind].hp,"Overtime spawns materially stronger foes")
+	Ledger.upgrades["cashback"] = true
+	var balance: int = Ledger.money
+	foes[0].take_damage(999)
+	check(Ledger.money==balance and Ledger.overtime_kills==1,"Overtime kills earn score but never farm cash or cashback")
+	game.overtime_session.advance(31)
+	await frames(3)
+	check(Ledger.money==balance+25 and Ledger.overtime_shifts==1 and Ledger.overtime_points==500,"Surviving overtime awards one cash and base-score bonus")
+	check(get_tree().get_nodes_in_group("overtime_enemies").is_empty() and game.pending_spawns.is_empty() and not game.door.locked,"Overtime expiry cleans all surviving attackers and unlocks exits")
+	check(not game.overtime_terminal.interact(),"Completed overtime terminal stays consumed")
+	game.start_run()
+	game.load_room(Rooms.EXIT_INDEX)
+	game.overtime_terminal.interact()
+	Ledger.lose_money(999)
+	game.overtime_session.advance(31)
+	check(game.mode=="lost" and Ledger.money==0 and Ledger.overtime_shifts==0,"Bankruptcy during overtime gives no survival payout")
+	game.start_run()
+	game.load_room(Rooms.EXIT_INDEX)
+	game.player.enabled = false
+	var auditor = game._spawn_enemy(Vector2(440,390),5)
+	auditor.fire_wait = 0
+	await frames(3)
+	check(Ledger.audit_left>4 and Ledger.shot_cost()==2 and Ledger.dash_cost()==4,"Auditor visibly adds one temporary service fee")
+	Ledger.apply_audit()
+	check(Ledger.shot_cost()==2,"Multiple audit marks refresh without stacking prices")
+	auditor.queue_free()
+	Ledger._process(7)
+	check(Ledger.shot_cost()==1 and Ledger.dash_cost()==3,"Audit surcharge expires cleanly")
+	var heavy = game._spawn_enemy(Vector2(650,390),6)
+	heavy.action_left = 0
+	heavy._charge(0.01,Vector2.LEFT)
+	check(heavy.attack_state=="warning","Enforcer warns before charging")
+	heavy._charge(1.0,Vector2.LEFT)
+	check(heavy.attack_state=="charge","Enforcer charge begins only after telegraph")
+	heavy._charge(0.5,Vector2.LEFT)
+	check(heavy.attack_state=="recover","Enforcer exposes a recovery window after charge")
+	game.start_run()
+	game.load_room(Rooms.EXIT_INDEX)
+	game.player.enabled = false
+	var clerk = game._spawn_enemy(Vector2(600,350),8)
+	var collector = game._spawn_enemy(Vector2(630,350),0)
+	await frames(4)
+	check(collector.buffed,"Collection clerk buffs nearby living enemies")
+	clerk.take_damage(999)
+	collector.aura_wait = 0
+	await frames(3)
+	check(not collector.buffed,"Clerk death removes its buff")
+	game.show_menu()
+	check(game.mode=="menu" and not get_tree().paused,"Expanded run returns to title cleanly")

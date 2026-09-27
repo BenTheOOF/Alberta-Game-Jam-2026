@@ -1,5 +1,9 @@
 extends Control
 
+## Owns screen-space presentation and difficulty selection, not authoritative gameplay.
+## Reads Ledger and the current room snapshot; buttons signal the coordinator.
+## Keep status, boss bars, overtime clocks and prompts outside the collision arena.
+
 signal start_requested
 signal resume_requested
 signal restart_requested
@@ -23,6 +27,12 @@ var age: float = 0.0
 var font: Font
 var goal: String = ""
 var fade: float = 0.0
+var config: Dictionary = {}
+var selected_difficulty: String = "easy"
+var difficulty_buttons: Array[Button] = []
+var boss_hp: int = 0
+var boss_max: int = 1
+var boss_phase: int = 0
 
 # Buttons are real Control nodes for input/focus; most other UI is drawn procedurally.
 func _ready() -> void:
@@ -35,6 +45,13 @@ func _ready() -> void:
 	primary.pressed.connect(_primary)
 	secondary.pressed.connect(_secondary)
 	third.pressed.connect(func(): menu_requested.emit())
+	var options: Array = DifficultySettings.MODES.keys()
+	for i in options.size():
+		var id: String = options[i]
+		var button := _button(DifficultySettings.profile(id).name,Vector2(78+i*151,503),Vector2(140,40),false)
+		button.pressed.connect(_select_difficulty.bind(id))
+		difficulty_buttons.append(button)
+	_select_difficulty("easy")
 	Ledger.money_changed.connect(_transaction)
 	set_mode("menu")
 
@@ -76,19 +93,20 @@ func _secondary() -> void:
 # Configure which buttons/overlay layout are visible for menu, play, pause, win or loss.
 func set_mode(value: String) -> void:
 	mode = value
+	for button in difficulty_buttons: button.visible = mode=="menu"
 	primary.visible = mode != "play"
 	secondary.visible = mode != "play" and mode != "menu"
 	third.visible = mode == "paused"
 	if mode == "menu":
-		primary.position = Vector2(78, 500)
-		primary.size = Vector2(310, 58)
+		primary.position = Vector2(78, 600)
+		primary.size = Vector2(310, 52)
 		primary.text = "OPEN ACCOUNT  →  $100"
 	else:
-		primary.position = Vector2(495, 473)
-		primary.size = Vector2(290, 54)
-		secondary.position = Vector2(495, 540)
+		primary.position = Vector2(495, 484)
+		primary.size = Vector2(290, 48)
+		secondary.position = Vector2(495, 544)
 		secondary.size = Vector2(290, 44)
-		third.position = Vector2(495, 593)
+		third.position = Vector2(495, 598)
 		third.size = Vector2(290, 42)
 		primary.text = "RESUME" if mode == "paused" else "[R] OPEN ANOTHER ACCOUNT"
 		secondary.text = "[R] RESTART" if mode == "paused" else "RETURN TO TITLE"
@@ -154,7 +172,10 @@ func _draw_title() -> void:
 	_text("THE PRICE",Vector2(70,327),110,Palette.MINT)
 	_text("Everything has a price. Even getting out alive.",Vector2(78,382),22,Palette.PAPER)
 	_paragraph("Your balance is your life. Spend it to fight.\nKeep enough to pay your way out.",Vector2(78,427),19,Palette.MUTED,29)
-	_text("12 DEPARTMENTS     ONE FINAL INVOICE",Vector2(78,588),16,Palette.MUTED)
+	_text("SELECT DIFFICULTY  /  LEFT + RIGHT ARROWS",Vector2(78,485),16,Palette.MUTED)
+	var selected: Dictionary = DifficultySettings.profile(selected_difficulty)
+	_text("%s  /  SCORE x%.1f" % [selected.description,selected.score],Vector2(78,568),18,Palette.MUTED)
+	_text("HP x%.2f / SPEED x%.2f / DAMAGE x%.2f / CASH x%.2f"%[selected.hp,selected.speed,selected.damage,selected.reward],Vector2(78,590),15,Palette.GOLD)
 	_text("ALBERTA GAME JAM 2026  /  EVERYTHING HAS A PRICE",Vector2(78,673),16,Palette.MUTED)
 	_draw_receipt(Vector2(844,72),Vector2(350,560))
 	_text("YOUR OPENING STATEMENT",Vector2(870,112),15,Palette.BG)
@@ -190,14 +211,25 @@ func _draw_live() -> void:
 	draw_rect(Rect2(0,0,1280,124),Palette.BG)
 	_text("PAY THE",Vector2(32,39),15,Palette.MUTED)
 	_text("PRICE",Vector2(30,77),36,Palette.MINT)
+	var difficulty: Dictionary = DifficultySettings.profile(Ledger.difficulty_id)
+	_text("%s x%.1f"%[difficulty.name,difficulty.score],Vector2(32,110),16,Palette.GOLD)
 	draw_line(Vector2(206,28),Vector2(206,83),Palette.LINE,1)
 	_text("DEPARTMENT %02d / %02d" % [room_index+1,Rooms.DATA.size()],Vector2(232,34),16,Palette.MUTED)
-	_text(Rooms.DATA[room_index].name,Vector2(230,68),28,Palette.PAPER)
-	_text(Rooms.DATA[room_index].subtitle,Vector2(232,89),14,Palette.MUTED)
+	_text(config.get("name",""),Vector2(230,68),28,Palette.PAPER)
+	_text(config.get("subtitle",""),Vector2(232,89),14,Palette.MUTED)
 	for i in Rooms.DATA.size():
 		var color: Color = Palette.MINT if i <= room_index else Palette.LINE
-		draw_rect(Rect2(756+i*16,40,8,8),color)
-	_text("%02d:%02d" % [int(Ledger.elapsed)/60,int(Ledger.elapsed)%60],Vector2(838,80),14,Palette.MUTED,100,HORIZONTAL_ALIGNMENT_RIGHT)
+		draw_rect(Rect2(756+i*12,40,7,8),color)
+	_text("%02d:%02d"%[int(Ledger.elapsed)/60,int(Ledger.elapsed)%60],Vector2(865,78),16,Palette.MUTED)
+	if boss_hp>0:
+		draw_rect(Rect2(510,18,445,64),Palette.BG)
+		_text("THE CEO / PHASE %d / %d%%"%[boss_phase,ceili(100.0*boss_hp/boss_max)],Vector2(520,37),20,Palette.GOLD)
+		draw_rect(Rect2(520,49,420,12),Palette.LINE)
+		draw_rect(Rect2(520,49,420*float(boss_hp)/boss_max,12),Palette.RED)
+	if overtime>0:
+		draw_rect(Rect2(510,18,445,64),Palette.BG)
+		_text("OVERTIME / SURVIVE %02d:%02d"%[int(overtime)/60,ceili(overtime)%60],Vector2(520,42),26,Palette.GOLD)
+		_text("KILLS OPTIONAL / BONUS +$%d"%difficulty.ot_cash,Vector2(520,70),16,Palette.PAPER)
 	# Account panel stays outside the arena, even while the camera shakes.
 	draw_style_box(Palette.box(Palette.PANEL,Palette.LINE,7),Rect2(980,24,268,624))
 	_text("AVAILABLE BALANCE",Vector2(1000,53),16,Palette.MUTED)
@@ -220,31 +252,32 @@ func _draw_live() -> void:
 		_text(entry.reason,Vector2(1000,285+i*23),16,Palette.MUTED)
 		_text(("+" if delta>0 else "-")+"$%d" % absi(delta),Vector2(1160,285+i*23),14,Palette.MINT if delta>0 else Palette.RED,66,HORIZONTAL_ALIGNMENT_RIGHT)
 	draw_line(Vector2(1000,405),Vector2(1228,405),Palette.LINE,1)
-	_paragraph(Rooms.DATA[room_index].memo,Vector2(1000,432),16,Palette.MUTED,21)
+	_paragraph(config.get("memo",""),Vector2(1000,432),16,Palette.MUTED,21)
 	_text(("INSURED  " if Ledger.insurance else "") + ("LOAN $5/ROOM" if Ledger.loan_active else ("" if Ledger.insurance else "NO ACTIVE POLICY")),Vector2(1000,630),14,Palette.BLUE if Ledger.insurance else Palette.MUTED)
 	# Bottom strip contains visible current prices and cooldown.
-	draw_rect(Rect2(32,665,924,39),Palette.PANEL)
-	_text("LMB  SHOOT $%d" % Ledger.shot_cost(),Vector2(46,690),16,Palette.PAPER)
-	_text("SPACE  DASH $%d" % Ledger.dash_cost(),Vector2(225,690),16,Palette.PAPER)
-	draw_rect(Rect2(370,683,64,3),Palette.LINE)
-	draw_rect(Rect2(370,683,64*dash_fraction,3),Palette.MINT)
-	_text("WASD MOVE",Vector2(462,690),16,Palette.MUTED)
-	_text("E INTERACT",Vector2(580,690),16,Palette.MUTED)
-	_text("ESC PAUSE",Vector2(701,690),16,Palette.MUTED)
-	_text("M %s" % ("UNMUTE" if Sound.muted else "MUTE"),Vector2(821,690),16,Palette.MUTED)
-	_text("R  RESTART",Vector2(1000,690),16,Palette.MUTED)
-	_text("AGJ / 26",Vector2(1180,690),14,Palette.LINE.lightened(0.15))
+	draw_rect(Rect2(32,690,924,30),Palette.PANEL)
+	_text("LMB  SHOOT $%d" % Ledger.shot_cost(),Vector2(46,712),16,Palette.PAPER)
+	_text("SPACE  DASH $%d" % Ledger.dash_cost(),Vector2(225,712),16,Palette.PAPER)
+	draw_rect(Rect2(370,705,64,3),Palette.LINE)
+	draw_rect(Rect2(370,705,64*dash_fraction,3),Palette.MINT)
+	_text("WASD MOVE",Vector2(462,712),16,Palette.MUTED)
+	_text("E INTERACT",Vector2(580,712),16,Palette.MUTED)
+	_text("ESC PAUSE",Vector2(701,712),16,Palette.MUTED)
+	_text("M %s" % ("UNMUTE" if Sound.muted else "MUTE"),Vector2(821,712),16,Palette.MUTED)
+	_text("R  RESTART",Vector2(1000,712),16,Palette.MUTED)
+	_text("AGJ / 26",Vector2(1180,712),14,Palette.LINE.lightened(0.15))
 	var status: String = goal
 	if overtime>0:
-		status = "OVERTIME / SURVIVE %ds / PAYOUT $25" % ceili(overtime)
+		status = "OVERTIME / SURVIVE / ENEMIES DESPAWN WHEN TIME EXPIRES"
 	if notice_left>0:
 		status = notice
-	var strip_color: Color = notice_color if notice_left>0 else Palette.MUTED
+	if Ledger.audit_left>0: status = "AUDIT ACTIVE / SHOTS & DASH +$1 / %ds"%ceili(Ledger.audit_left)
+	var strip_color: Color = Palette.GOLD if Ledger.audit_left>0 else (notice_color if notice_left>0 else Palette.MUTED)
 	draw_style_box(Palette.box(Color(Palette.BG,0.92)),Rect2(232,98,720,24))
 	_text(status,Vector2(241,115),14,strip_color,702,HORIZONTAL_ALIGNMENT_CENTER)
 	if not prompt.is_empty():
-		draw_style_box(Palette.box(Palette.BG,Palette.MINT,4),Rect2(32,627,924,30))
-		_text(prompt,Vector2(43,647),16,Palette.PAPER,902,HORIZONTAL_ALIGNMENT_CENTER)
+		draw_style_box(Palette.box(Palette.BG,Palette.MINT,4),Rect2(32,652,924,30))
+		_text(prompt,Vector2(43,673),16,Palette.PAPER,902,HORIZONTAL_ALIGNMENT_CENTER)
 
 # Semi-transparent modal layer used for pause and both end states.
 func _draw_overlay() -> void:
@@ -257,9 +290,31 @@ func _draw_overlay() -> void:
 	var subtitle: String = "You escaped. Management is disappointed." if mode=="won" else ("You can no longer afford to exist." if mode=="lost" else "The clock is stopped. This part is free.")
 	_text(subtitle,Vector2(380,241),17,Palette.PAPER,520,HORIZONTAL_ALIGNMENT_CENTER)
 	draw_dashed_line(Vector2(402,268),Vector2(878,268),Palette.LINE,1,6)
-	_text("FINAL SCORE" if mode=="won" else "BALANCE",Vector2(402,300),16,Palette.MUTED)
-	_text("$%d" % Ledger.money,Vector2(692,335),54,accent,185,HORIZONTAL_ALIGNMENT_RIGHT)
-	_text("DEPARTMENT REACHED",Vector2(402,366),16,Palette.MUTED)
-	_text("%d / %d" % [room_index+1,Rooms.DATA.size()],Vector2(787,366),17,Palette.PAPER,90,HORIZONTAL_ALIGNMENT_RIGHT)
-	_text("EARNED $%d   /   SPENT $%d   /   DAMAGE $%d" % [Ledger.earned,Ledger.spent,Ledger.damage_paid],Vector2(402,403),16,Palette.MUTED)
-	_text("%d SHOTS   /   %d DASHES   /   %02d:%02d" % [Ledger.shots,Ledger.dashes,int(Ledger.elapsed)/60,int(Ledger.elapsed)%60],Vector2(402,431),16,Palette.MUTED)
+	var difficulty: Dictionary = DifficultySettings.profile(Ledger.difficulty_id)
+	_text("%s  /  SCORE x%.1f"%[difficulty.name,difficulty.score],Vector2(402,293),18,Palette.GOLD)
+	_text("BALANCE $%d  /  BASE SCORE %d"%[Ledger.money,Ledger.base_score()],Vector2(402,323),18,Palette.PAPER)
+	_text("FINAL SCORE" if mode!="paused" else "CURRENT SCORE",Vector2(402,365),18,Palette.MUTED)
+	_text(str(Ledger.final_score()),Vector2(690,378),42,accent,185,HORIZONTAL_ALIGNMENT_RIGHT)
+	_text("ROOMS %d / KILLS %d / CEO %s"%[Ledger.rooms_cleared,Ledger.kills,"YES" if Ledger.boss_defeated else "NO"],Vector2(402,404),16,Palette.MUTED)
+	_text("OVERTIME: %d SHIFTS / %d KILLS"%[Ledger.overtime_shifts,Ledger.overtime_kills],Vector2(402,426),16,Palette.MUTED)
+	_text("EARNED $%d / SPENT $%d / FEES $%d"%[Ledger.earned,Ledger.spent,Ledger.damage_paid],Vector2(402,448),16,Palette.MUTED)
+	_text("SEED %d / %02d:%02d"%[Ledger.run_seed,int(Ledger.elapsed)/60,int(Ledger.elapsed)%60],Vector2(402,470),14,Palette.MUTED)
+
+# Difficulty is a menu choice, retained by this persistent HUD through restarts.
+func _select_difficulty(id: String) -> void:
+	selected_difficulty = id
+	var keys: Array = DifficultySettings.MODES.keys()
+	for i in difficulty_buttons.size():
+		var chosen: bool = keys[i]==id
+		difficulty_buttons[i].add_theme_stylebox_override("normal",Palette.box(Palette.GOLD if chosen else Palette.PANEL,Palette.GOLD))
+		difficulty_buttons[i].add_theme_color_override("font_color",Palette.BG if chosen else Palette.PAPER)
+	queue_redraw()
+
+func _input(event: InputEvent) -> void:
+	if mode!="menu" or not event is InputEventKey or not event.pressed or event.echo: return
+	var direction: int = 1 if event.keycode in [KEY_RIGHT,KEY_D] else (-1 if event.keycode in [KEY_LEFT,KEY_A] else 0)
+	if direction==0: return
+	var keys: Array = DifficultySettings.MODES.keys()
+	_select_difficulty(keys[posmod(keys.find(selected_difficulty)+direction,keys.size())])
+	Sound.play("click")
+	get_viewport().set_input_as_handled()

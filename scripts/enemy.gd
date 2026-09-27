@@ -1,109 +1,176 @@
 extends CharacterBody2D
-
-# Shared script for all current enemy variants.
-# kind 0 = Collector, kind 1 = Tax Man, kind 2 = Runner. Their core chase logic is
-# identical; kind changes stats, damage rules, reward and visual styling.
-
-
-# game.gd listens for this to spawn the actual collectible payout.
+## Owns one enemy's movement and attacks, not encounter generation or money rules.
+## EnemyData supplies stats; signals request projectiles/drops; Ledger records score.
+## Behaviour handlers return desired movement. Shared collision/hit logic runs once.
 signal defeated(at: Vector2, reward: int, color: Color)
-@export_enum("Collector", "Tax man", "Runner", "Banker", "Target") var kind: int = 0
-@export var hit_points: int = 3
-@export var speed: float = 95.0
-@export var reward: int = 5
+signal invoice_fired(at: Vector2, direction: Vector2, fee: int, speed: float, overtime: bool)
+@export var kind: int = 0
+@export var reward: int = -1
+var hit_points: int = 3
+var max_hp: int = 3
+var speed: float = 95.0
 var target: CharacterBody2D
-var flash: float = 0.0
-var stagger: float = 0.0
+var room
+var elite: bool = false
+var overtime: bool = false
+var definition: Dictionary = {}
+var handlers: Dictionary = {}
+var flash: float = 0
+var stagger: float = 0
 var knockback := Vector2.ZERO
-var hit_wait: float = 0.0
+var hit_wait: float = 0
 var alive: bool = true
-var age: float = 0.0
+var age: float = 0
 var fire_wait: float = 2.0
-signal invoice_fired(at: Vector2, direction: Vector2)
+var action_left: float = 3.0
+var attack_state: String = "move"
+var charge_direction := Vector2.RIGHT
+var aura_wait: float = 0
+var buffed: bool = false
+var path_wait: float = 0
+var path_direction := Vector2.ZERO
 
-
-# Apply variant-specific stats after exported/default values have loaded.
 func _ready() -> void:
-	if kind == 1:
-		hit_points = 4
-		speed = 80
-	elif kind == 2:
-		hit_points = 2
-		speed = 148
-	elif kind == 3:
-		hit_points = 4
-		speed = 70
-	elif kind == 4:
-		hit_points = 1
-		speed = 0
+	definition = EnemyData.scaled(kind,Ledger.difficulty_id,elite,overtime)
+	hit_points = definition.hp
+	max_hp = hit_points
+	speed = definition.speed
+	if reward<0: reward = definition.reward
+	if overtime: reward = 0
+	handlers = {"ranged":_ranged,"orbit":_orbit,"audit":_audit,"charge":_charge,"support":_support}
+	if overtime: add_to_group("overtime_enemies")
 
-
-# Simple chase AI with lightweight obstacle steering. The short ray checks whether
-# furniture/walls block the direct route; if so, the enemy tries a perpendicular side.
 func _physics_process(delta: float) -> void:
-	if not alive or not Ledger.active or not is_instance_valid(target):
-		return
+	if not alive or not Ledger.active or not is_instance_valid(target): return
 	age += delta
-	flash = maxf(0, flash - delta)
-	hit_wait = maxf(0, hit_wait - delta)
-	stagger = maxf(0, stagger - delta)
-	var direction: Vector2 = (target.global_position - global_position).normalized()
-	if kind == 3:
-		var distance: float = global_position.distance_to(target.global_position)
-		fire_wait -= delta
-		if fire_wait<=0:
-			var sight := PhysicsRayQueryParameters2D.create(global_position,target.global_position,2)
-			if get_world_2d().direct_space_state.intersect_ray(sight).is_empty():
-				invoice_fired.emit(global_position,direction)
-				Sound.play("invoice")
-			fire_wait = 2.3
-		if distance<200: direction *= -1
-		elif distance<320: direction = Vector2.ZERO
-	# Local steering around furniture; no navigation mesh or pathfinding system.
-	var query := PhysicsRayQueryParameters2D.create(global_position, global_position + direction * 62, 2)
-	if not get_world_2d().direct_space_state.intersect_ray(query).is_empty():
-		var side_a: Vector2 = direction.rotated(PI / 2)
-		var side_b: Vector2 = direction.rotated(-PI / 2)
-		var a := PhysicsRayQueryParameters2D.create(global_position, global_position + side_a * 70, 2)
-		direction = side_a if get_world_2d().direct_space_state.intersect_ray(a).is_empty() else side_b
-	velocity = knockback if stagger > 0 else direction * speed
+	flash = maxf(0,flash-delta)
+	hit_wait = maxf(0,hit_wait-delta)
+	stagger = maxf(0,stagger-delta)
+	fire_wait -= delta
+	aura_wait -= delta
+	path_wait -= delta
+	var toward: Vector2 = (target.global_position-global_position).normalized()
+	var direction: Vector2 = toward
+	var behavior: String = definition.behavior
+	if handlers.has(behavior): direction = handlers[behavior].call(delta,toward)
+	if behavior=="dummy": direction = Vector2.ZERO
+	# Buffs are recomputed from living clerks; they do not accumulate every frame.
+	if aura_wait<=0:
+		buffed = false
+		for ally in get_tree().get_nodes_in_group("enemies"):
+			if ally!=self and is_instance_valid(ally) and ally.get("kind")==8 and ally.alive and position.distance_to(ally.position)<170:
+				buffed = true
+				break
+		aura_wait = 0.3
+	# A short cached path around authored furniture prevents ranged-heavy random
+	# compositions getting stuck forever behind a central island.
+	if direction.length_squared()>0 and attack_state=="move":
+		var query := PhysicsRayQueryParameters2D.create(global_position,global_position+direction.normalized()*60,2)
+		if not get_world_2d().direct_space_state.intersect_ray(query).is_empty():
+			if is_instance_valid(room) and behavior not in ["orbit","ranged","support"]:
+				if path_wait<=0:
+					path_direction = room.navigation_direction(position,target.position)
+					path_wait = 0.25
+				direction = path_direction
+			else: direction = direction.rotated(PI/2)
+	velocity = knockback if stagger>0 else direction*speed*(1.2 if buffed else 1.0)
 	move_and_slide()
-	if kind != 4 and global_position.distance_to(target.global_position) < 31 and hit_wait <= 0:
-		if target.take_hit(kind == 1, global_position,3 if kind==2 else 5,"COLLECTION FEE" if kind==2 else "PAIN FEE"):
+	if behavior!="dummy" and global_position.distance_to(target.global_position)<(39 if kind==6 else 31) and hit_wait<=0:
+		if target.take_hit(behavior=="tax",global_position,definition.fee,"ENFORCEMENT" if kind==6 else ("COLLECTION FEE" if kind==2 else "PAIN FEE")):
 			hit_wait = 1.0
 	queue_redraw()
 
+func _shoot(direction: Vector2, fee: int, interval: float) -> void:
+	if fire_wait>0: return
+	var sight := PhysicsRayQueryParameters2D.create(global_position,target.global_position,2)
+	if get_world_2d().direct_space_state.intersect_ray(sight).is_empty():
+		invoice_fired.emit(global_position,direction,fee,240*definition.get("projectiles",1.0),overtime)
+		Sound.play("invoice")
+	fire_wait = interval/definition.get("rate",1.0)
 
-# Bullets call this method through hit.collider.has_method("take_damage").
-# Stagger briefly replaces chase velocity with knockback for readable hit feedback.
+func _ranged(_delta: float, toward: Vector2) -> Vector2:
+	_shoot(toward,definition.fee,2.3)
+	var distance: float = position.distance_to(target.position)
+	if distance<200: return -toward
+	return toward if distance>320 else Vector2.ZERO
+
+func _orbit(_delta: float, toward: Vector2) -> Vector2:
+	_shoot(toward,definition.fee,2.6)
+	var radial: float = clampf((position.distance_to(target.position)-230)/100,-0.7,0.7)
+	return (toward.rotated(PI/2)+toward*radial).normalized()
+
+func _audit(_delta: float, toward: Vector2) -> Vector2:
+	if fire_wait<=0 and position.distance_to(target.position)<420:
+		Ledger.apply_audit(5)
+		Sound.play("warning")
+		fire_wait = 9.0/definition.get("rate",1.0)
+	return toward if position.distance_to(target.position)>260 else Vector2.ZERO
+
+func _support(_delta: float, toward: Vector2) -> Vector2:
+	return -toward if position.distance_to(target.position)<240 else Vector2.ZERO
+
+func _charge(delta: float, toward: Vector2) -> Vector2:
+	action_left -= delta
+	match attack_state:
+		"move":
+			if action_left<=0:
+				attack_state = "warning"
+				charge_direction = toward
+				action_left = 0.9
+				Sound.play("warning")
+			return toward
+		"warning":
+			if action_left<=0: attack_state = "charge"; action_left = 0.45
+			return Vector2.ZERO
+		"charge":
+			if action_left<=0: attack_state = "recover"; action_left = 1.2
+			return charge_direction*5.5
+		"recover":
+			if action_left<=0: attack_state = "move"; action_left = 3.2/definition.get("rate",1.0)
+			return Vector2.ZERO
+	return toward
+
+# Swept player bullets call this once. Clearing collision immediately prevents a
+# second bullet awarding another kill while queue_free waits for the frame boundary.
 func take_damage(amount: int, from_direction: Vector2 = Vector2.RIGHT) -> void:
-	if not alive or not Ledger.active:
-		return
+	if not alive or not Ledger.active: return
 	hit_points -= amount
 	flash = 0.12
-	stagger = 0.1
-	knockback = from_direction * 165
+	stagger = 0.1 if attack_state!="charge" else 0.0
+	knockback = from_direction*165
 	Sound.play("hit")
-	if hit_points <= 0:
-		Sound.play("death")
+	if hit_points<=0:
 		alive = false
 		collision_layer = 0
-		Ledger.kills += 1
-		var payout: int = reward + (2 if Ledger.upgrades.has("cashback") else 0)
-		defeated.emit(global_position, payout, _color())
+		Ledger.record_defeat(kind,elite,overtime)
+		var payout: int = 0 if overtime else reward+(2 if Ledger.upgrades.has("cashback") and kind!=4 else 0)
+		defeated.emit(global_position,payout,_color())
+		Sound.play("death")
 		queue_free()
 	queue_redraw()
 
-
-# Variant colour doubles as a gameplay cue: gold is the percentage-based Tax Man.
 func _color() -> Color:
-	return [Palette.RED,Palette.GOLD,Color("d99bea"),Palette.BLUE,Palette.GOLD][kind]
+	return definition.get("color",Palette.RED)
 
-
-# Enemies are procedural vector/pixel-like drawings rather than external sprites.
 func _draw() -> void:
-	PixelArt.person(self,_color(),Vector2.ZERO,int(age*7) if speed>0 else 0,kind,flash>0)
-	for i in hit_points:
-		draw_rect(Rect2(-float(hit_points)*3.5+i*7,-37,5,3),_color())
-	if kind==3 and fire_wait<0.5:
-		draw_rect(Rect2(-5,-48,10,6),Palette.GOLD)
+	var tint: Color = _color()
+	if kind==6: draw_set_transform(Vector2.ZERO,0,Vector2(1.5,1.5))
+	PixelArt.person(self,tint,Vector2.ZERO,int(age*7) if velocity.length()>1 else 0,kind,flash>0)
+	draw_set_transform(Vector2.ZERO)
+	if kind==7:
+		draw_rect(Rect2(-17,-12,34,18),tint)
+		draw_rect(Rect2(-22,-15,10,4),Palette.PAPER)
+		draw_rect(Rect2(12,-15,10,4),Palette.PAPER)
+		draw_rect(Rect2(-4,-8,8,8),Palette.BG)
+	if kind==5: draw_string(Palette.font(),Vector2(-8,-22),"!",HORIZONTAL_ALIGNMENT_LEFT,-1,25,tint)
+	if kind==8: draw_rect(Rect2(-20,-22,40,42),Color(tint,0.15),false,2)
+	if elite:
+		draw_rect(Rect2(-7,-48,14,5),Palette.GOLD)
+		draw_rect(Rect2(-11,-54,4,9),Palette.GOLD)
+		draw_rect(Rect2(7,-54,4,9),Palette.GOLD)
+	if buffed: draw_rect(Rect2(-18,23,36,3),Color("f5b0d1"))
+	var width: float = minf(max_hp*5,46)
+	draw_rect(Rect2(-width/2,-38,width,3),Palette.LINE)
+	draw_rect(Rect2(-width/2,-38,width*float(hit_points)/max_hp,3),tint)
+	if attack_state=="warning": draw_line(Vector2.ZERO,charge_direction*130,Palette.GOLD,4)
+	if definition.get("behavior","") in ["ranged","orbit","audit"] and fire_wait<0.5: draw_rect(Rect2(-5,-46,10,5),Palette.GOLD)

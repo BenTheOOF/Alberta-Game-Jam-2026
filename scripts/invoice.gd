@@ -1,8 +1,13 @@
 extends Node2D
+
+## Owns one swept hostile projectile and its lifetime.
+## Calls player.take_hit; the player and Ledger handle insurance, cooldowns and money.
 ## Swept hostile projectile; world walls and furniture stop the invoice.
 var direction := Vector2.LEFT
 var speed: float = 240.0
 var lifetime: float = 5.0
+var fee: int = 4
+var overtime: bool = false
 func _ready() -> void:
 	add_to_group("invoices")
 func _physics_process(delta: float) -> void:
@@ -15,7 +20,7 @@ func _physics_process(delta: float) -> void:
 	var hit := get_world_2d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		if hit.collider.has_method("take_hit"):
-			hit.collider.take_hit(false,global_position,4,"INVOICE FEE")
+			hit.collider.take_hit(false,global_position,fee,"INVOICE FEE")
 		Sound.play("impact")
 		queue_free()
 		return

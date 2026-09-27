@@ -1,5 +1,8 @@
 class_name PixelArt
 extends RefCounted
+
+## Owns reusable pixel sprite drawing, not actor state or movement.
+## Actors supply identity, colour and animation frames.
 ## Code-native pixel sprites: 12 x 18 cells, drawn sharply at 2x scale.
 ## No generated textures, smoothing, or external character asset dependency.
 const PERSON: Array[String] = [

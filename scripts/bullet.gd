@@ -1,5 +1,8 @@
 extends Area2D
 
+## Owns one swept player projectile and impact feedback.
+## Player/Ledger already approved its price; enemies own hit points and defeat signals.
+
 @export var speed: float = 920.0
 @export var damage: int = 1
 var direction := Vector2.RIGHT

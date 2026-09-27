@@ -1,5 +1,8 @@
 extends Node2D
 
+## Owns one prop's prompt, single-use state and purchase request.
+## Ledger owns money; advance_requested and message tell the game about the result.
+
 signal celebrated
 signal advance_requested
 signal message(value: String, color: Color)
@@ -33,7 +36,7 @@ func prompt() -> String:
 	if kind == "exit":
 		return "[E] PAY $50 & LEAVE" if Ledger.money >= 50 else "EXIT NEEDS $50  /  YOU HAVE $%d" % Ledger.money
 	if kind == "overtime":
-		return "[E] OVERTIME  /  SURVIVE 15s FOR $25  /  NO ENTRY FEE"
+		return "[E] OVERTIME / SURVIVE 30s / +$%d + SCORE / ONE SHIFT" % DifficultySettings.profile(Ledger.difficulty_id).ot_cash
 	if kind == "upgrade":
 		return "[E] %s  /  $%d" % [detail, price]
 	return "[E] %s  /  %s" % [title, "$%d" % price if price > 0 else "NO FEE"]
@@ -134,6 +137,6 @@ func _draw() -> void:
 	if kind == "loan" and not used: caption = "+$25 / -$5 PER ROOM"
 	if kind == "atm" and not used: caption = "$4 FEE / $15 OUT"
 	if kind == "overtime":
-		caption = "+$25" if not used else "WORKING"
+		caption = "+$%d / 30s" % DifficultySettings.profile(Ledger.difficulty_id).ot_cash if not used else "SHIFT USED"
 	draw_string(Palette.font(), Vector2(-95, 64), caption, HORIZONTAL_ALIGNMENT_CENTER, 190, 20, color)
 	draw_string(Palette.font(), Vector2(-130, -51), title, HORIZONTAL_ALIGNMENT_CENTER, 260, 16, color)

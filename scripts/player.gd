@@ -1,5 +1,8 @@
 extends CharacterBody2D
 
+## Owns player input, movement and ability cooldowns. Ledger approves every fee.
+## Does not spawn projectiles or change rooms; fired/feedback/hurt signals ask the coordinator.
+
 signal fired(origin: Vector2, direction: Vector2)
 signal feedback(at: Vector2, text: String, color: Color)
 signal hurt

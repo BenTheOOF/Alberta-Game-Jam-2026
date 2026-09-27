@@ -1,4 +1,7 @@
 extends Node2D
+
+## Owns one pickup's movement and collection latch.
+## Ledger credits the account; this node does not choose enemy rewards.
 @export var amount: int = 5
 var target: Node2D
 var age: float = 0.0

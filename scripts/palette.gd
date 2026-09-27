@@ -1,6 +1,9 @@
 class_name Palette
 extends RefCounted
 
+## Owns shared colours, the sharp pixel font and UI styling.
+## It does not own gameplay state; draw code and labels use these helpers.
+
 const BG := Color("0a1217")
 const FLOOR := Color("13242b")
 const GRID := Color("1b3037")

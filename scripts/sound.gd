@@ -1,4 +1,8 @@
 extends Node
+
+## Owns the shared music player and bounded SFX pool, not game-state decisions.
+## The coordinator selects menu/play/end music; actors request named effects.
+## Both the upstream generated title theme and the gameplay loop are preserved.
 ## Original retro SFX and a 16-bar looping chiptune. One music voice per run.
 var sounds: Dictionary = {}
 var voices: Array[AudioStreamPlayer] = []
@@ -38,6 +42,12 @@ func _ready() -> void:
 	sounds["invoice"] = _tone(350,180,0.13)
 	sounds["toll"] = _tone(550,330,0.1)
 	sounds["warning"] = _tone(220,440,0.22)
+	sounds["boss_intro"] = _tone(80,260,0.8)
+	sounds["boss_phase"] = _tone(220,880,0.5)
+	sounds["overtime_start"] = _tone(660,220,0.6)
+	sounds["overtime_done"] = _tone(660,1440,0.7)
+	sounds["countdown"] = _tone(880,440,0.5)
+	sounds["elite"] = _tone(110,350,0.3)
 	music = AudioStreamPlayer.new()
 	var track: AudioStreamWAV = load("res://assets/audio/price_of_living.wav")
 	track.loop_mode = AudioStreamWAV.LOOP_FORWARD
