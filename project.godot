@@ -10,8 +10,16 @@ config_version=5
 
 [application]
 
-config/name="Alberta Game Jam 2026"
-config/features=PackedStringArray("4.7")
+config/name="Pay the Price"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/description="Everything has a price. Even getting out alive. Alberta Game Jam 2026."
+config/icon="res://assets/icon.svg"
+
+[autoload]
+
+Ledger="*res://scripts/ledger.gd"
+Sound="*res://scripts/sound.gd"
 
 [display]
 
