@@ -1,0 +1,13 @@
+class_name Rooms
+extends RefCounted
+## Hand-authored encounters. Coordinates are in the 1280 x 720 design canvas.
+## Entries are [x, y, kind, reward]; kind: 0 collector, 1 tax man, 2 runner.
+const DATA: Array[Dictionary] = [
+	{"name":"INDUCTION", "subtitle":"Welcome aboard. Your life is now a liquid asset.", "memo":"MONEY IS YOUR LIFE.\nKeep $50 for the exit.\n\nMovement is free.\nShooting and dashing\nare billable services.", "enemies":[[720,380,0,5]], "coins":[[335,450,3],[385,450,3]], "desks":[], "chests":[], "fee":8},
+	{"name":"RISK MANAGEMENT", "subtitle":"Past performance does not guarantee future treasure.", "memo":"SEALED ASSETS\nPay $5. Find $2–$20.\nSome deals lose money.\n\nCollect gold coins to\nrecover your balance.", "enemies":[[650,240,0,4],[760,390,0,5],[640,530,2,3]], "coins":[[290,260,4]], "desks":[[420,330,95,38]], "chests":[[455,510]], "fee":10},
+	{"name":"THE COST OF CHOICE", "subtitle":"Time is money. So is the express lane.", "memo":"YOUR CALL\nClear the room and\nleave with no fee.\n\nOr pay $15 at the\nupper express door\nto skip the collectors.", "enemies":[[620,235,0,5],[770,340,0,4],[610,500,2,3],[780,540,0,6]], "coins":[[430,550,4]], "desks":[], "chests":[[475,250]], "fee":0, "shortcut":true},
+	{"name":"EMPLOYEE BENEFITS", "subtitle":"Invest in yourself. Management won't.", "memo":"ONE-TIME UPGRADES\nSprint: +20% speed\nDash: $1 less per dash\nCashback: +$2 per kill\n\nEvery purchase comes\nout of your life.", "enemies":[], "coins":[], "desks":[], "chests":[], "fee":0, "shop":true},
+	{"name":"MARKET CORRECTION", "subtitle":"Due to market conditions, violence now costs $2.", "memo":"INFLATION NOTICE\nShots now cost $2.\nDashes now cost $4\nbefore your discount.\n\nRed floor = a $5 fee.\nGold = about to arm.", "enemies":[[620,240,0,6],[780,285,2,5],[740,450,0,7],[600,520,0,6],[820,550,2,5]], "coins":[[315,545,5]], "desks":[[470,345,84,40]], "chests":[[320,250]], "fee":10, "hazards":[[565,342,110,50]]},
+	{"name":"FINAL AUDIT", "subtitle":"The tax man would like a word. And twenty percent.", "memo":"TAX MAN\nThe gold suit takes\n20% of your balance.\nDash through danger.\n\nAll collectors must\nbe cleared to leave.", "enemies":[[640,250,1,10],[795,245,0,7],[725,360,0,6],[620,500,2,5],[795,520,0,6],[560,360,0,6]], "coins":[[330,240,5]], "desks":[], "chests":[[335,545]], "fee":0, "hazards":[[470,285,90,45],[470,445,90,45]]},
+	{"name":"FINANCIAL FREEDOM", "subtitle":"You can check out any time. For fifty dollars.", "memo":"FINAL INVOICE\nPay $50 to leave.\nWhat remains is\nyour final score.\n\nShort on cash?\nSurvive an overtime\nshift to earn $25.", "enemies":[], "coins":[], "desks":[], "chests":[], "fee":50, "exit":true}
+]
