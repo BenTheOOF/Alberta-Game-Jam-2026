@@ -10,6 +10,7 @@ signal money_changed(amount: int, difference: int, reason: String)
 signal bankrupt
 signal won
 signal prices_changed
+signal claim_approved
 
 
 # Core economy constants and run state.
@@ -31,6 +32,11 @@ var shots: int = 0
 var dashes: int = 0
 var kills: int = 0
 var elapsed: float = 0.0
+var insurance: bool = false
+var loan_active: bool = false
+var interest_rooms: Dictionary = {}
+var tutorial_flags: Dictionary = {}
+var rooms_cleared: int = 0
 
 
 # Restore every value that must not leak from one attempt into the next.
@@ -47,6 +53,11 @@ func reset_run() -> void:
 	dashes = 0
 	kills = 0
 	elapsed = 0.0
+	insurance = false
+	loan_active = false
+	interest_rooms.clear()
+	tutorial_flags.clear()
+	rooms_cleared = 0
 	money_changed.emit(money, 0, "OPENING BALANCE")
 	prices_changed.emit()
 
@@ -114,8 +125,34 @@ func buy_upgrade(id: String, cost: int) -> bool:
 	if not active:
 		return false
 	upgrades[id] = true
+	if id == "insurance":
+		insurance = true
 	prices_changed.emit()
 	return true
+
+func claim_insurance() -> bool:
+	if not active or not insurance:
+		return false
+	insurance = false
+	claim_approved.emit()
+	prices_changed.emit()
+	return true
+
+func take_loan() -> bool:
+	if not active or loan_active:
+		return false
+	loan_active = true
+	interest_rooms[room_index] = true
+	gain_money(25,"LOAN ADVANCE")
+	prices_changed.emit()
+	return true
+
+func enter_room(index: int) -> void:
+	room_index = index
+	if loan_active and not interest_rooms.has(index):
+		# Exactly one disclosed interest charge on entering a new department.
+		interest_rooms[index] = true
+		lose_money(5,"ROOM INTEREST")
 
 func apply_inflation() -> void:
 	if inflated:

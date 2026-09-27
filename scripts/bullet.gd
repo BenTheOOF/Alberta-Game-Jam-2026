@@ -18,6 +18,7 @@ func _physics_process(delta: float) -> void:
 	if not hit.is_empty():
 		if is_instance_valid(hit.collider) and hit.collider.has_method("take_damage"):
 			hit.collider.take_damage(damage, direction)
+		Sound.play("impact")
 		impact.emit(hit.position, Palette.MINT)
 		queue_free()
 		return
@@ -28,6 +29,6 @@ func _physics_process(delta: float) -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	draw_line(-direction * 15, direction * 3, Color(Palette.MINT, 0.15), 9, true)
-	draw_line(-direction * 9, direction * 3, Palette.MINT, 3, true)
-	draw_circle(direction * 3, 2.5, Palette.PAPER)
+	draw_line(-direction * 15, direction * 3, Color(Palette.MINT, 0.15), 8, false)
+	draw_line(-direction * 9, direction * 3, Palette.MINT, 4, false)
+	draw_rect(Rect2(direction*3-Vector2(2,2),Vector2(4,4)),Palette.PAPER)

@@ -7,7 +7,7 @@ extends CharacterBody2D
 
 # game.gd listens for this to spawn the actual collectible payout.
 signal defeated(at: Vector2, reward: int, color: Color)
-@export_enum("Collector", "Tax man", "Runner") var kind: int = 0
+@export_enum("Collector", "Tax man", "Runner", "Banker", "Target") var kind: int = 0
 @export var hit_points: int = 3
 @export var speed: float = 95.0
 @export var reward: int = 5
@@ -18,6 +18,8 @@ var knockback := Vector2.ZERO
 var hit_wait: float = 0.0
 var alive: bool = true
 var age: float = 0.0
+var fire_wait: float = 2.0
+signal invoice_fired(at: Vector2, direction: Vector2)
 
 
 # Apply variant-specific stats after exported/default values have loaded.
@@ -28,6 +30,12 @@ func _ready() -> void:
 	elif kind == 2:
 		hit_points = 2
 		speed = 148
+	elif kind == 3:
+		hit_points = 4
+		speed = 70
+	elif kind == 4:
+		hit_points = 1
+		speed = 0
 
 
 # Simple chase AI with lightweight obstacle steering. The short ray checks whether
@@ -40,6 +48,17 @@ func _physics_process(delta: float) -> void:
 	hit_wait = maxf(0, hit_wait - delta)
 	stagger = maxf(0, stagger - delta)
 	var direction: Vector2 = (target.global_position - global_position).normalized()
+	if kind == 3:
+		var distance: float = global_position.distance_to(target.global_position)
+		fire_wait -= delta
+		if fire_wait<=0:
+			var sight := PhysicsRayQueryParameters2D.create(global_position,target.global_position,2)
+			if get_world_2d().direct_space_state.intersect_ray(sight).is_empty():
+				invoice_fired.emit(global_position,direction)
+				Sound.play("invoice")
+			fire_wait = 2.3
+		if distance<200: direction *= -1
+		elif distance<320: direction = Vector2.ZERO
 	# Local steering around furniture; no navigation mesh or pathfinding system.
 	var query := PhysicsRayQueryParameters2D.create(global_position, global_position + direction * 62, 2)
 	if not get_world_2d().direct_space_state.intersect_ray(query).is_empty():
@@ -49,8 +68,8 @@ func _physics_process(delta: float) -> void:
 		direction = side_a if get_world_2d().direct_space_state.intersect_ray(a).is_empty() else side_b
 	velocity = knockback if stagger > 0 else direction * speed
 	move_and_slide()
-	if global_position.distance_to(target.global_position) < 31 and hit_wait <= 0:
-		if target.take_hit(kind == 1, global_position):
+	if kind != 4 and global_position.distance_to(target.global_position) < 31 and hit_wait <= 0:
+		if target.take_hit(kind == 1, global_position,3 if kind==2 else 5,"COLLECTION FEE" if kind==2 else "PAIN FEE"):
 			hit_wait = 1.0
 	queue_redraw()
 
@@ -66,6 +85,7 @@ func take_damage(amount: int, from_direction: Vector2 = Vector2.RIGHT) -> void:
 	knockback = from_direction * 165
 	Sound.play("hit")
 	if hit_points <= 0:
+		Sound.play("death")
 		alive = false
 		collision_layer = 0
 		Ledger.kills += 1
@@ -77,25 +97,13 @@ func take_damage(amount: int, from_direction: Vector2 = Vector2.RIGHT) -> void:
 
 # Variant colour doubles as a gameplay cue: gold is the percentage-based Tax Man.
 func _color() -> Color:
-	return Palette.GOLD if kind == 1 else (Palette.RED if kind == 0 else Color("d99bea"))
+	return [Palette.RED,Palette.GOLD,Color("d99bea"),Palette.BLUE,Palette.GOLD][kind]
 
 
 # Enemies are procedural vector/pixel-like drawings rather than external sprites.
 func _draw() -> void:
-	var color: Color = Palette.PAPER if flash > 0 else _color()
-	var bob: float = sin(age * 7) * 1.3
-	draw_set_transform(Vector2(0, 16), 0, Vector2(1, 0.35))
-	draw_circle(Vector2.ZERO, 19, Color(0, 0, 0, 0.35))
-	draw_set_transform(Vector2.ZERO)
-	draw_line(Vector2(-5, 9), Vector2(-5, 16 + bob), Palette.BG, 7)
-	draw_line(Vector2(5, 9), Vector2(5, 16 - bob), Palette.BG, 7)
-	draw_style_box(Palette.box(color.darkened(0.38), color, 3), Rect2(-12, -3 + bob, 24, 19))
-	draw_colored_polygon(PackedVector2Array([Vector2(-3, -3 + bob), Vector2(3, -3 + bob), Vector2(4, 6 + bob), Vector2(0, 10 + bob), Vector2(-4, 6 + bob)]), color)
-	draw_circle(Vector2(0, -12 + bob), 10, color)
-	draw_rect(Rect2(-8, -14 + bob, 6, 3), Palette.BG)
-	draw_rect(Rect2(2, -14 + bob, 6, 3), Palette.BG)
-	if kind == 1:
-		draw_style_box(Palette.box(Palette.GOLD, Palette.BG, 2), Rect2(10, 0, 14, 15))
-		draw_rect(Rect2(-13, -22, 26, 4), Palette.GOLD)
+	PixelArt.person(self,_color(),Vector2.ZERO,int(age*7) if speed>0 else 0,kind,flash>0)
 	for i in hit_points:
-		draw_rect(Rect2(-float(hit_points) * 3.5 + i * 7, -32, 5, 3), color)
+		draw_rect(Rect2(-float(hit_points)*3.5+i*7,-37,5,3),_color())
+	if kind==3 and fire_wait<0.5:
+		draw_rect(Rect2(-5,-48,10,6),Palette.GOLD)
