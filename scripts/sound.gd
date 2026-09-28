@@ -1,19 +1,18 @@
 extends Node
 
-# Audio singleton (autoloaded as "Sound").
-# Both SFX and music are generated in memory, so the project has no external audio files.
-
-## Original synthesized SFX plus a lightweight looping chiptune.
-## No downloads, licensed tracks, or external audio dependencies.
-
-# A small player pool allows overlapping effects (for example hit + coin) without
-# creating/destroying AudioStreamPlayer nodes during gameplay.
+## Owns the shared music player and bounded SFX pool, not game-state decisions.
+## The coordinator selects menu/play/end music; actors request named effects.
+## Both the upstream generated title theme and the gameplay loop are preserved.
+## Original retro SFX and a 16-bar looping chiptune. One music voice per run.
 var sounds: Dictionary = {}
 var voices: Array[AudioStreamPlayer] = []
 var voice: int = 0
 var muted: bool = false
-var music_player: AudioStreamPlayer
-
+var music: AudioStreamPlayer
+var scene: String = "menu"
+var paused: bool = false
+var title_music: AudioStreamWAV
+var gameplay_music: AudioStreamWAV
 
 # Build all audio streams once at startup, then begin the background loop.
 func _ready() -> void:
@@ -21,7 +20,6 @@ func _ready() -> void:
 	for i in 10:
 		var player := AudioStreamPlayer.new()
 		player.volume_db = -16.0
-		player.process_mode = Node.PROCESS_MODE_ALWAYS
 		add_child(player)
 		voices.append(player)
 	sounds["shot"] = _tone(620, 160, 0.09)
@@ -33,16 +31,35 @@ func _ready() -> void:
 	sounds["deny"] = _tone(170, 130, 0.17)
 	sounds["win"] = _tone(523, 1046, 0.85)
 	sounds["lose"] = _tone(300, 45, 0.9)
-
-	music_player = AudioStreamPlayer.new()
-	music_player.name = "Music"
-	music_player.volume_db = -25.0
-	music_player.process_mode = Node.PROCESS_MODE_ALWAYS
-	music_player.stream = _music_loop()
-	add_child(music_player)
-	music_player.finished.connect(_restart_music)
-	music_player.play()
-
+	sounds["impact"] = _tone(90,45,0.045)
+	sounds["death"] = _tone(440,70,0.19)
+	sounds["chest"] = _tone(740,1500,0.35)
+	sounds["door"] = _tone(260,520,0.3)
+	sounds["exit"] = _tone(660,1320,0.45)
+	sounds["hover"] = _tone(840,880,0.035)
+	sounds["click"] = _tone(480,760,0.09)
+	sounds["claim"] = _tone(880,1320,0.3)
+	sounds["invoice"] = _tone(350,180,0.13)
+	sounds["toll"] = _tone(550,330,0.1)
+	sounds["warning"] = _tone(220,440,0.22)
+	sounds["boss_intro"] = _tone(80,260,0.8)
+	sounds["boss_phase"] = _tone(220,880,0.5)
+	sounds["overtime_start"] = _tone(660,220,0.6)
+	sounds["overtime_done"] = _tone(660,1440,0.7)
+	sounds["countdown"] = _tone(880,440,0.5)
+	sounds["elite"] = _tone(110,350,0.3)
+	music = AudioStreamPlayer.new()
+	var track: AudioStreamWAV = load("res://assets/audio/price_of_living.wav")
+	track.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	track.loop_begin = 0
+	track.loop_end = int(track.get_length()*track.mix_rate)
+	gameplay_music = track
+	title_music = _music_loop()
+	title_music.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	title_music.loop_end = int(title_music.get_length()*title_music.mix_rate)
+	music.stream = gameplay_music
+	music.volume_db = -24
+	add_child(music)
 
 # Round-robin through the voice pool; assigning a new stream to one voice only replaces
 # that voice, leaving other simultaneous effects untouched.
@@ -54,22 +71,27 @@ func play(id: String) -> void:
 	player.stream = sounds[id]
 	player.play()
 
+func set_scene(value: String) -> void:
+	scene = value
+	paused = false
+	if value in ["won","lost"]:
+		music.stop()
+	else:
+		var desired: AudioStreamWAV = title_music if value=="menu" else gameplay_music
+		if music.stream != desired:
+			music.stop()
+			music.stream = desired
+		music.volume_db = -26 if value=="menu" else -22
+		if not music.playing: music.play()
+
+func set_paused(value: bool) -> void:
+	paused = value
+	music.volume_db = -31 if value else -22
 
 # Muting stops existing audio as well as blocking new SFX. Unmuting restarts music.
 func toggle_mute() -> void:
 	muted = not muted
-	if muted:
-		for player in voices:
-			player.stop()
-		if is_instance_valid(music_player):
-			music_player.stop()
-	elif is_instance_valid(music_player) and not music_player.playing:
-		music_player.play()
-
-func _restart_music() -> void:
-	if not muted and is_instance_valid(music_player):
-		music_player.play()
-
+	AudioServer.set_bus_mute(0,muted)
 
 # Generate a short two-oscillator WAV with a fast attack/decay envelope.
 # Frequency sweeps create different arcade-style effects from the same function.
@@ -90,6 +112,15 @@ func _tone(start: float, finish: float, duration: float) -> AudioStreamWAV:
 	wav.data = bytes
 	return wav
 
+func stop_all() -> void:
+	music.stop()
+	for player in voices: player.stop()
+
+func _exit_tree() -> void:
+	stop_all()
+	music.stream = null
+	for player in voices: player.stream = null
+	sounds.clear()
 
 # Helpers used by the procedural music synthesizer.
 func _note_hz(midi_note: int) -> float:
