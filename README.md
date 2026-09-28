@@ -27,10 +27,10 @@ opening the account. Easy is the default. Restart retains your selected mode.
 | --- | --- | --- |
 | WASD / arrows | Move | Free |
 | Mouse | Aim | Free |
-| Left click / hold | Shoot | $1 |
+| Left click / hold | Shoot current weapon | $1–$4 per trigger pull |
 | Space | Dash with brief hit protection | $3 |
 | E | Approve highlighted interaction | Disclosed before purchase |
-| Escape | Pause / resume; return after a run | Free |
+| Escape | Pause / resume; close shop; return after a run | Free |
 | R | Restart the entire account | Free |
 | M | Mute / unmute music and effects | Free |
 
@@ -38,7 +38,8 @@ opening the account. Easy is the default. Restart retains your selected mode.
 
 There are **15 areas: three tutorial rooms, ten standard departments, the CEO,
 and the final exit**. The tutorial teaches movement, paid shooting, money as
-health, dashing, and a $2 door. A clean tutorial leaves $88.
+health, dashing, and a $2 door. A clean tutorial leaves $88 before optional
+equipment purchases. The third tutorial has an equipment desk before combat.
 
 Standard departments combine eight authored layouts with seeded encounters.
 Geometry is never assembled from arbitrary walls. Open office, cubicles, records
@@ -50,29 +51,57 @@ and chest presence vary. Recent layouts and enemy types receive less weight.
 | --- | --- |
 | 1–2 | Gentle collector/runner introduction; second room has an ATM and a chest |
 | 3 | Toll route, free detour, optional $15 encounter skip, optional loan |
-| 4 | First shop and optional overtime |
-| 5 | 80-second transfer, ranged enemies, $12 settlement |
-| 6 | Inflation and warning floors; 70-second halt, $15 settlement |
+| 4 | Full shop and optional overtime |
+| 5 | Ranged encounter, $12 settlement |
+| 6 | Inflation and warning floors, $15 settlement |
 | 7 | Refund, loan access, advanced enemy combinations |
 | 8 | Second shop and optional overtime |
-| 9 | 90-second audit, $20 settlement |
+| 9 | Final audit encounter, $20 settlement |
 | 10 | Executive clearance, $18 settlement, optional overtime |
 | CEO | Dedicated three-phase boss; victory unlocks the exit area |
 | Exit | $50 to leave; one last optional overtime terminal |
 
 Each combat budget is `max(4, round((4 + standard_room * 2) * budget_scale))`.
 The generator spends that budget using unlocked enemy definitions. Extra claims
-wait in a queue instead of exceeding the simultaneous enemy cap. Timed rooms
-release the queue throughout the objective. Clear all claims and any timer to
-leave. Buying the shortcut skips the room-clear score.
+wait in a queue instead of exceeding the simultaneous enemy cap. After a wave
+dies, the next wave starts its visible arrival warnings within 0.15 seconds.
+The first wave starts warnings after 0.4 seconds. Buying the shortcut skips
+the room-clear score.
+
+Normal rooms unlock on the next update once living enemies, pending arrivals,
+and required waves are all gone. **ACCOUNT SETTLED / EXIT OPEN** and a sound
+confirm the clear. The playtest delay was reproduced as legacy 70/80/90-second
+minimum durations also controlling wave scheduling; those gates are removed.
+`Game._objective_complete()` owns progression. Overtime alone in the current
+route requires a visible survival clock; the CEO requires its defeat state.
 
 Spawn warnings last at least 1.3 seconds. Sockets avoid walls, furniture,
 hazards, paid props, the exit, and a 250-pixel radius around the player. Safety
 is checked again when the enemy actually arrives; approaching a warning moves
-it to another safe socket and warns again. Arrivals reserve cap slots.
+it to another safe socket and warns again. Arrivals reserve cap slots and have
+another 0.6 seconds of activation grace before moving or attacking.
 
-The human pacing target is **10–20 minutes**, depending on mode and choices.
-This is a tuning target, not a measured human playtest result or a win-rate claim.
+Human run duration and weapon balance still need playtesting after these pacing
+changes; automated progression checks do not establish a win rate.
+
+## Equipment and shop
+
+Press **E** at an equipment desk for a paused storefront with **Weapons**,
+**Upgrades**, and **Utility** columns. Click a card or use **Tab + Enter**;
+**Escape** returns to play. Cards show purchase price, current firing price,
+fire rate, effect, and ownership. Purchases equip immediately. Owned weapons
+can be re-equipped free at any desk; ownership resets on restart.
+
+| Weapon | Buy | Fire per pull | Damage | Rate | Tradeoff |
+| --- | ---: | ---: | --- | ---: | --- |
+| Standard Issue | Included | $1 | 1 | 4.3/sec | Accurate, efficient, long range; one target |
+| Spreadsheet | $18 | $3 | 5 pellets × 1 | 1.5/sec | Forgiving cone; short range, expensive misses |
+| Microtransaction | $15 | $1 | 1 | 8.3/sec | Rapid corrections; loose aim, shorter range, fast spending |
+| Capital Investment | $24 | $4 | 5, through up to 2 enemies | 1/sec | Wide projectile and strong knockback; slow, costly misses |
+
+The table shows base prices. Inflation and an active audit each add $1 **once
+per trigger pull**, including the spread weapon. The HUD and shop use the same
+current price. Spending the final dollar still bankrupts the account.
 
 ## Difficulty
 
@@ -106,11 +135,18 @@ increased cash, and double enemy points.
 | Collector | 1 | 1 | 3 | Chases; $5 contact fee |
 | Runner | 1 | 1 | 2 | Fast chase; $3 contact fee |
 | Banker | 3 | 2 | 4 | Keeps medium range; fires $4 invoices |
-| Tax Man | 5 | 3 | 4 | 20% balance hit, $4–$20 before difficulty scaling |
+| Tax Man | 5 | 3 | 4 | 20% balance hit, fixed $4–$20 clamp |
 | Debt Drone | 5 | 2 | 2 | Orbits and fires weak $2 invoices |
 | Auditor | 7 | 3 | 5 | Marks for five seconds: shots and dashes +$1 |
 | Enforcer | 7 | 4 | 8 | Warned charge, $12 contact fee, vulnerable recovery |
 | Collection Clerk | 7 | 3 | 4 | Nearby enemies move 20% faster while supported |
+
+Before an unseen type can act, a player-dismissed briefing shows its sprite,
+ability, and counterplay. New types in the same roster share one screen. The
+whole world, hazards, projectiles, and clocks pause until **E** or a click after
+a short input debounce. Dismissal gives 0.75 seconds of protection and cannot
+fire a paid shot. Briefings appear once per type per run and reset on restart.
+Unseen overtime types are introduced before its 30-second clock starts.
 
 Audit marks refresh without stacking. Clerk buffs are recomputed from living
 clerk proximity, so killing the clerk removes the effect. Enemies navigate around
@@ -155,8 +191,9 @@ exactly $50 still wins, with $0 remaining cash and the run's earned score intact
   kill ($25), or one-hit insurance ($15). Each benefit is bought once per run.
 - **Loan:** +$25 now, then $5 interest once per new area. One contract per run.
   Revisits cannot double-charge, but interest can bankrupt you.
-- **Inflation:** standard room 6 permanently changes shots to $2 and dashes to
-  $4 before discounts. Red floor hazards cost $5; gold is the warning.
+- **Inflation:** standard room 6 permanently adds $1 to each weapon's trigger
+  price and changes dashes to $4 before discounts. Red floor hazards cost $5;
+  gold is the warning.
 - **Relief:** later low-balance rooms can include one visible $10 refund. This
   does not reduce hidden enemy stats or the encounter budget.
 - **Rewards:** normal drops use the larger of scaled base cash or the cost of
@@ -181,10 +218,15 @@ clears, kills, CEO status, overtime shifts/kills, account totals, seed, and time
 
 ## Presentation and audio
 
-Code-drawn pixel sprites, Tiny5 type, nearest filtering, block particles, price
-signs, and short fades preserve the existing retro corporate style. Fixed HUD
-labels sit outside the playable arena. The difficulty stays visible during the
-CEO health bar and large overtime timer.
+Code-drawn pixel sprites, Tiny5 headings, nearest filtering, block particles,
+price signs, and short fades preserve the retro corporate style. DejaVu Sans
+body text improves reading at embedded browser sizes. The sidebar shows the
+current weapon and price, a short objective, and a contextual tip. Difficulty
+stays visible during the CEO health bar and large overtime timer.
+
+Each connected sprite part shares one snapped animation anchor. Hats, eyes,
+accessories, and elite crowns move with the body; health bars sit above them.
+Drones and training targets use distinct silhouettes without a human underneath.
 
 `Sound` preserves the team's generated title music and **The Price of Living**,
 an original 16-bar, 112 BPM gameplay loop (34.29 seconds). One music player
@@ -193,7 +235,9 @@ There are 26 synthesized effects including boss, elite, and overtime cues.
 M controls the master bus. `tools/make_music.py` reproduces the gameplay track.
 
 Tiny5 is by the Tiny5 Project Authors under the SIL Open Font License; see
-`assets/fonts/OFL.txt`. Godot notices accompany exports. Existing `ground.tscn`,
+`assets/fonts/OFL.txt`. DejaVu Sans is distributed under the Bitstream Vera /
+DejaVu terms in `assets/fonts/DejaVu-LICENSE.txt`. Both font licenses and Godot
+notices accompany exports. Existing `ground.tscn`,
 tilesets, teammate movement work, and useful comments are preserved. Startup
 conflict markers and invalid asset paths were repaired.
 
@@ -209,12 +253,15 @@ conflict markers and invalid asset paths were repaired.
 | `scripts/enemy.gd` | Data-driven ordinary actors and behavior dispatch |
 | `scripts/enemies/boss.gd`, `fee_zone.gd` | CEO state machine and short-lived fee warnings |
 | `scripts/systems/overtime.gd` | Survival clock, staged pressure, completion request |
-| `scripts/ledger.gd` | Money, debt, upgrades, temporary audit prices, centralized score |
+| `scripts/ledger.gd` | Money, debt, upgrades, weapon ownership, current prices, centralized score |
+| `scripts/weapons/weapon_data.gd` | Four weapon definitions, tuning, and shop descriptions |
+| `scripts/ui/shop.gd` | Organized cards, purchase feedback, keyboard/pointer navigation |
+| `scripts/ui/threat_intro.gd` | Grouped briefings and ready input; Game owns world pause |
 | `scripts/game.gd` | Scene assembly, capped spawn queue, progression and cleanup |
 | `scripts/room.gd` | Solids, navigation, hazards, toll entry detection and tutorial signs |
 | `scripts/player.gd`, `bullet.gd`, `invoice.gd` | Movement, paid actions, damage protection and swept projectiles |
 | `scripts/interactable.gd` | Price prompts and single-use transaction requests |
-| `scripts/pixel_art.gd`, `palette.gd`, `hud.gd` | Sprites, palette, pixel font, account UI |
+| `scripts/pixel_art.gd`, `palette.gd`, `hud.gd` | Sprites, palette, font hierarchy, account UI |
 | `scripts/sound.gd`, `assets/audio/` | Music lifecycle and sound feedback |
 
 Add an enemy definition and reuse a behavior or register one handler in
@@ -223,6 +270,8 @@ target ID 4 stays excluded. Add geometry to `RoomTemplates.DATA`, then check
 spawn sockets and reachable paths. Tune modes in `DifficultySettings.MODES`;
 spawning, rewards, HUD, and score consume the same profile. Add room features as
 config flags with one owner for their lifecycle rather than duplicating costs.
+Add weapons in `WeaponData.DEFINITIONS`; the shop, HUD, player cooldown, and
+projectile factory consume that definition. Ledger charges once per trigger.
 
 The generator seeds once per run and caches each room. For reproducible debug
 runs call `game.start_run(1729)` after choosing a difficulty. Generate rooms in
@@ -240,9 +289,10 @@ From the repository, with Godot 4.7 named `godot`:
 ```sh
 godot --headless --editor --import --quit
 godot --headless res://tests/test_runner.tscn
+godot --headless res://tests/polish_runner.tscn
 ```
 
-The suite reports **172 checks**. Generator coverage samples **100 seeds per
+The suites report **172 core + 56 polish checks (228 total)**. Generator coverage samples **100 seeds per
 mode: 400 runs and 3,200 procedural combat rooms**, checking exact budgets,
 safe sockets, unlocks, determinism, varied layouts/compositions, and a viable
 accurate-shooting economy through the CEO and final exit. Sample mean combat
@@ -255,11 +305,22 @@ cleanup/payout, bankruptcy, audit expiry, clerk buffs, and restart during fades.
 Full-route tests advance timers and defeat actors to validate progression;
 they do not measure human survival rates or run length.
 
+The polish suite separately exercises **400 live generated encounters: 100 each
+on Easy, Normal, Hard, and Brutal**. It defeats actual actors, drains real spawn
+queues, and verifies the exit within one update of the last required death,
+including stale duration data. It also covers protected/once-per-run briefings,
+CEO/overtime clock separation, early shop access, purchase and firing charges,
+free re-equipping, restart, heavy-round width/piercing/walls, and sidebar fit.
+
 `tests/capture.tscn` captures all areas and overlays with a graphics display.
 Set `PAY_THE_PRICE_CAPTURES` to an output directory, or use the default under the
-OS cache directory. The exported Web build is smoke-tested with keyboard/mouse
-input through the tutorial, pause, and restart, including difficulty and active
-audio. Windows is exported with official matching templates and has not been
+OS cache directory. `tests/enemy_gallery.tscn` renders every normal and elite
+enemy through animation and hit flash. Visual review covers those variants,
+all areas, and overlays at 1280×720, plus the shop, briefings, weapon/objective
+sidebar, CEO HUD, and overtime timer at actual 960×540.
+The exported Web build is smoke-tested at both sizes with keyboard/mouse input
+through the tutorial, equipment purchase, briefing, pause, and restart, including
+difficulty and active audio. Windows is exported with official matching templates and has not been
 executed on Windows in this environment. Human difficulty/pacing playtests remain
 necessary. Controller/touch controls and save files are outside this jam build.
 
@@ -272,7 +333,7 @@ godot --headless --export-release Linux build/linux/PayThePrice.x86_64
 ```
 
 Build output and `.godot/` are ignored. Tests/tools are excluded from exports.
-Distribute `GODOT-LICENSE.txt`, `GODOT-COPYRIGHT.txt`, and the font license with
+Distribute `GODOT-LICENSE.txt`, `GODOT-COPYRIGHT.txt`, and both font licenses with
 the builds. This development pass is on **codex/pay-the-price** only.
 
 ## Setup

@@ -8,7 +8,6 @@ signal feedback(at: Vector2, text: String, color: Color)
 signal hurt
 
 @export var movement_speed: float = 285.0
-@export var shot_interval: float = 0.23
 @export var dash_duration: float = 0.15
 @export var dash_cooldown: float = 0.8
 @export var dash_multiplier: float = 3.2
@@ -106,7 +105,7 @@ func try_shoot() -> bool:
 		Sound.play("deny")
 		shot_wait = 0.3
 		return false
-	shot_wait = shot_interval
+	shot_wait = WeaponData.definition(Ledger.weapon_id).interval
 	Ledger.shots += 1
 	Ledger.tutorial_flags["shot"] = true
 	if Ledger.active:

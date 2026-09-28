@@ -8,6 +8,11 @@ signal start_requested
 signal resume_requested
 signal restart_requested
 signal menu_requested
+signal shop_closed
+signal shop_overtime
+var shop_view
+signal intro_finished
+var threat_intro
 
 var mode: String = "menu"
 var room_index: int = 0
@@ -52,6 +57,13 @@ func _ready() -> void:
 		button.pressed.connect(_select_difficulty.bind(id))
 		difficulty_buttons.append(button)
 	_select_difficulty("easy")
+	shop_view = preload("res://scripts/ui/shop.gd").new()
+	add_child(shop_view)
+	shop_view.closed.connect(func(): shop_closed.emit())
+	shop_view.overtime_requested.connect(func(): shop_overtime.emit())
+	threat_intro = preload("res://scripts/ui/threat_intro.gd").new()
+	add_child(threat_intro)
+	threat_intro.dismissed.connect(func(): intro_finished.emit())
 	Ledger.money_changed.connect(_transaction)
 	set_mode("menu")
 
@@ -145,7 +157,7 @@ func _text(value: String, at: Vector2, size_px: int = 18, color: Color = Palette
 func _paragraph(value: String, at: Vector2, size_px: int, color: Color, spacing: float = 24) -> void:
 	var y: float = at.y
 	for line in value.split("\n"):
-		_text(line,Vector2(at.x,y),size_px,color)
+		_body(line,Vector2(at.x,y),size_px,color)
 		y += spacing
 
 func _draw() -> void:
@@ -170,12 +182,12 @@ func _draw_title() -> void:
 	_text("PAY THE PRICE CORP.  /  EST. 2026", Vector2(125,70),14,Palette.MUTED)
 	_text("PAY",Vector2(70,218),110,Palette.PAPER)
 	_text("THE PRICE",Vector2(70,327),110,Palette.MINT)
-	_text("Everything has a price. Even getting out alive.",Vector2(78,382),22,Palette.PAPER)
+	_body("Everything has a price. Even getting out alive.",Vector2(78,382),22,Palette.PAPER)
 	_paragraph("Your balance is your life. Spend it to fight.\nKeep enough to pay your way out.",Vector2(78,427),19,Palette.MUTED,29)
 	_text("SELECT DIFFICULTY  /  LEFT + RIGHT ARROWS",Vector2(78,485),16,Palette.MUTED)
 	var selected: Dictionary = DifficultySettings.profile(selected_difficulty)
-	_text("%s  /  SCORE x%.1f" % [selected.description,selected.score],Vector2(78,568),18,Palette.MUTED)
-	_text("HP x%.2f / SPEED x%.2f / DAMAGE x%.2f / CASH x%.2f"%[selected.hp,selected.speed,selected.damage,selected.reward],Vector2(78,590),15,Palette.GOLD)
+	_body("%s  /  SCORE x%.1f" % [selected.description,selected.score],Vector2(78,568),20,Palette.MUTED)
+	_body("HP x%.2f / SPEED x%.2f / DAMAGE x%.2f / CASH x%.2f"%[selected.hp,selected.speed,selected.damage,selected.reward],Vector2(78,590),16,Palette.GOLD)
 	_text("ALBERTA GAME JAM 2026  /  EVERYTHING HAS A PRICE",Vector2(78,673),16,Palette.MUTED)
 	_draw_receipt(Vector2(844,72),Vector2(350,560))
 	_text("YOUR OPENING STATEMENT",Vector2(870,112),15,Palette.BG)
@@ -194,7 +206,7 @@ func _draw_title() -> void:
 	_text("EXIT FEE",Vector2(870,494),19,Palette.BG)
 	_text("$50",Vector2(1080,496),29,Palette.BG,86,HORIZONTAL_ALIGNMENT_RIGHT)
 	_text("$0 BALANCE = BANKRUPTCY",Vector2(870,543),14,Color("9b3c42"))
-	_text("Prices subject to inflation.",Vector2(870,575),16,Palette.LINE)
+	_body("Prices subject to inflation.",Vector2(870,575),16,Palette.LINE)
 	for x in range(870,1167,5):
 		draw_rect(Rect2(x,592,2 if x%3 else 3,18),Color(Palette.BG,0.7))
 	_text("[M] SOUND %s" % ("OFF" if Sound.muted else "ON"),Vector2(1046,673),16,Palette.MUTED)
@@ -212,7 +224,7 @@ func _draw_live() -> void:
 	_text("PAY THE",Vector2(32,39),15,Palette.MUTED)
 	_text("PRICE",Vector2(30,77),36,Palette.MINT)
 	var difficulty: Dictionary = DifficultySettings.profile(Ledger.difficulty_id)
-	_text("%s x%.1f"%[difficulty.name,difficulty.score],Vector2(32,110),16,Palette.GOLD)
+	_text("%s x%.1f"%[difficulty.name,difficulty.score],Vector2(32,110),20,Palette.GOLD)
 	draw_line(Vector2(206,28),Vector2(206,83),Palette.LINE,1)
 	_text("DEPARTMENT %02d / %02d" % [room_index+1,Rooms.DATA.size()],Vector2(232,34),16,Palette.MUTED)
 	_text(config.get("name",""),Vector2(230,68),28,Palette.PAPER)
@@ -242,29 +254,31 @@ func _draw_live() -> void:
 	draw_rect(Rect2(1000,197,228,4),Palette.LINE)
 	draw_rect(Rect2(1000,197,228*minf(float(Ledger.money)/50,1),4),cash_color)
 	_text("RESERVE SECURED" if Ledger.money>=50 else "SHORT BY $%d" % (50-Ledger.money),Vector2(1000,222),16,cash_color)
-	_text("LIVE TRANSACTIONS",Vector2(1000,258),16,Palette.MUTED)
-	if transactions.is_empty():
-		_text("Opening balance",Vector2(1000,286),16,Palette.PAPER)
-		_text("+$100",Vector2(1162,286),16,Palette.MINT)
-	for i in transactions.size():
-		var entry: Dictionary = transactions[i]
-		var delta: int = entry.delta
-		_text(entry.reason,Vector2(1000,285+i*23),16,Palette.MUTED)
-		_text(("+" if delta>0 else "-")+"$%d" % absi(delta),Vector2(1160,285+i*23),14,Palette.MINT if delta>0 else Palette.RED,66,HORIZONTAL_ALIGNMENT_RIGHT)
-	draw_line(Vector2(1000,405),Vector2(1228,405),Palette.LINE,1)
-	_paragraph(config.get("memo",""),Vector2(1000,432),16,Palette.MUTED,21)
-	_text(("INSURED  " if Ledger.insurance else "") + ("LOAN $5/ROOM" if Ledger.loan_active else ("" if Ledger.insurance else "NO ACTIVE POLICY")),Vector2(1000,630),14,Palette.BLUE if Ledger.insurance else Palette.MUTED)
+	_text("CURRENT WEAPON",Vector2(1000,254),18,Palette.MUTED)
+	_text(WeaponData.definition(Ledger.weapon_id).name,Vector2(1000,282),22,Palette.PAPER)
+	_body("$%d per trigger pull"%Ledger.shot_cost(),Vector2(1000,311),20,Palette.GOLD)
+	draw_line(Vector2(1000,329),Vector2(1228,329),Palette.LINE,1)
+	var guidance: Dictionary = _guidance()
+	_text("OBJECTIVE",Vector2(1000,357),20,Palette.MINT)
+	_paragraph(guidance.objective,Vector2(1000,385),20,Palette.PAPER,27)
+	_text("TIP",Vector2(1000,465),20,Palette.GOLD)
+	_paragraph(guidance.tip,Vector2(1000,491),18,Palette.PAPER,25)
+	if not transactions.is_empty():
+		var entry: Dictionary = transactions[0]
+		_body(entry.reason.capitalize(),Vector2(1000,583),16,Palette.MUTED,157)
+		_body(("+" if entry.delta>0 else "-")+"$%d"%absi(entry.delta),Vector2(1170,583),17,Palette.MINT if entry.delta>0 else Palette.RED)
+	_body(("Insured  " if Ledger.insurance else "")+("Loan: $5 / room" if Ledger.loan_active else ""),Vector2(1000,631),17,Palette.BLUE)
 	# Bottom strip contains visible current prices and cooldown.
 	draw_rect(Rect2(32,690,924,30),Palette.PANEL)
-	_text("LMB  SHOOT $%d" % Ledger.shot_cost(),Vector2(46,712),16,Palette.PAPER)
-	_text("SPACE  DASH $%d" % Ledger.dash_cost(),Vector2(225,712),16,Palette.PAPER)
-	draw_rect(Rect2(370,705,64,3),Palette.LINE)
-	draw_rect(Rect2(370,705,64*dash_fraction,3),Palette.MINT)
-	_text("WASD MOVE",Vector2(462,712),16,Palette.MUTED)
-	_text("E INTERACT",Vector2(580,712),16,Palette.MUTED)
-	_text("ESC PAUSE",Vector2(701,712),16,Palette.MUTED)
-	_text("M %s" % ("UNMUTE" if Sound.muted else "MUTE"),Vector2(821,712),16,Palette.MUTED)
-	_text("R  RESTART",Vector2(1000,712),16,Palette.MUTED)
+	_body("LMB  SHOOT $%d" % Ledger.shot_cost(),Vector2(46,712),18,Palette.PAPER)
+	_body("SPACE  DASH $%d" % Ledger.dash_cost(),Vector2(225,712),18,Palette.PAPER)
+	draw_rect(Rect2(390,705,44,3),Palette.LINE)
+	draw_rect(Rect2(390,705,44*dash_fraction,3),Palette.MINT)
+	_body("WASD MOVE",Vector2(462,712),16,Palette.MUTED)
+	_body("E INTERACT",Vector2(580,712),16,Palette.MUTED)
+	_body("ESC PAUSE",Vector2(701,712),16,Palette.MUTED)
+	_body("M %s" % ("UNMUTE" if Sound.muted else "MUTE"),Vector2(821,712),16,Palette.MUTED)
+	_body("R  RESTART",Vector2(1000,712),16,Palette.MUTED)
 	_text("AGJ / 26",Vector2(1180,712),14,Palette.LINE.lightened(0.15))
 	var status: String = goal
 	if overtime>0:
@@ -274,10 +288,10 @@ func _draw_live() -> void:
 	if Ledger.audit_left>0: status = "AUDIT ACTIVE / SHOTS & DASH +$1 / %ds"%ceili(Ledger.audit_left)
 	var strip_color: Color = Palette.GOLD if Ledger.audit_left>0 else (notice_color if notice_left>0 else Palette.MUTED)
 	draw_style_box(Palette.box(Color(Palette.BG,0.92)),Rect2(232,98,720,24))
-	_text(status,Vector2(241,115),14,strip_color,702,HORIZONTAL_ALIGNMENT_CENTER)
+	_body(status,Vector2(241,116),17,strip_color,702,HORIZONTAL_ALIGNMENT_CENTER)
 	if not prompt.is_empty():
 		draw_style_box(Palette.box(Palette.BG,Palette.MINT,4),Rect2(32,652,924,30))
-		_text(prompt,Vector2(43,673),16,Palette.PAPER,902,HORIZONTAL_ALIGNMENT_CENTER)
+		_body(prompt,Vector2(43,674),20,Palette.PAPER,902,HORIZONTAL_ALIGNMENT_CENTER)
 
 # Semi-transparent modal layer used for pause and both end states.
 func _draw_overlay() -> void:
@@ -288,7 +302,7 @@ func _draw_overlay() -> void:
 	var heading: String = "FINANCIAL FREEDOM" if mode=="won" else ("BANKRUPT" if mode=="lost" else "ON YOUR BREAK")
 	_text(heading,Vector2(370,205),36,accent,540,HORIZONTAL_ALIGNMENT_CENTER)
 	var subtitle: String = "You escaped. Management is disappointed." if mode=="won" else ("You can no longer afford to exist." if mode=="lost" else "The clock is stopped. This part is free.")
-	_text(subtitle,Vector2(380,241),17,Palette.PAPER,520,HORIZONTAL_ALIGNMENT_CENTER)
+	_body(subtitle,Vector2(380,241),17,Palette.PAPER,520,HORIZONTAL_ALIGNMENT_CENTER)
 	draw_dashed_line(Vector2(402,268),Vector2(878,268),Palette.LINE,1,6)
 	var difficulty: Dictionary = DifficultySettings.profile(Ledger.difficulty_id)
 	_text("%s  /  SCORE x%.1f"%[difficulty.name,difficulty.score],Vector2(402,293),18,Palette.GOLD)
@@ -298,7 +312,7 @@ func _draw_overlay() -> void:
 	_text("ROOMS %d / KILLS %d / CEO %s"%[Ledger.rooms_cleared,Ledger.kills,"YES" if Ledger.boss_defeated else "NO"],Vector2(402,404),16,Palette.MUTED)
 	_text("OVERTIME: %d SHIFTS / %d KILLS"%[Ledger.overtime_shifts,Ledger.overtime_kills],Vector2(402,426),16,Palette.MUTED)
 	_text("EARNED $%d / SPENT $%d / FEES $%d"%[Ledger.earned,Ledger.spent,Ledger.damage_paid],Vector2(402,448),16,Palette.MUTED)
-	_text("SEED %d / %02d:%02d"%[Ledger.run_seed,int(Ledger.elapsed)/60,int(Ledger.elapsed)%60],Vector2(402,470),14,Palette.MUTED)
+	_body("SEED %d / %02d:%02d"%[Ledger.run_seed,int(Ledger.elapsed)/60,int(Ledger.elapsed)%60],Vector2(402,470),14,Palette.MUTED)
 
 # Difficulty is a menu choice, retained by this persistent HUD through restarts.
 func _select_difficulty(id: String) -> void:
@@ -318,3 +332,44 @@ func _input(event: InputEvent) -> void:
 	_select_difficulty(keys[posmod(keys.find(selected_difficulty)+direction,keys.size())])
 	Sound.play("click")
 	get_viewport().set_input_as_handled()
+
+# The coordinator owns the pause; the HUD only owns this dismissible briefing.
+func show_introduction(kinds: Array[int]) -> void:
+	threat_intro.present(kinds)
+
+func hide_introduction() -> void:
+	if is_instance_valid(threat_intro): threat_intro.hide()
+
+func open_shop(available_overtime: bool) -> void:
+	shop_view.open(available_overtime)
+
+func hide_shop() -> void:
+	if is_instance_valid(shop_view): shop_view.hide()
+
+# Body copy uses a smooth font. Only narrow transient notices are ellipsized;
+# objective and tip lines are deliberately short enough to show in full.
+func _body(value: String, at: Vector2, size_px: int = 18, color: Color = Palette.PAPER, width: float = -1, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT) -> void:
+	var copy: String = value
+	if width>0 and Palette.body_font().get_string_size(copy,HORIZONTAL_ALIGNMENT_LEFT,-1,size_px).x>width:
+		while not copy.is_empty() and Palette.body_font().get_string_size(copy+"…",HORIZONTAL_ALIGNMENT_LEFT,-1,size_px).x>width:
+			copy = copy.left(copy.length()-1)
+		copy += "…"
+	draw_string(Palette.body_font(),at,copy,align,width,size_px,color)
+
+func _guidance() -> Dictionary:
+	if overtime>0: return {"objective":"Survive until 00:00.\nYou do not need kills.","tip":"Keep moving.\nShooting is optional.\nNo cash drops here."}
+	match config.get("lesson",""):
+		"move": return {"objective":"Walk through both\nblue checkpoints.","tip":"WASD or arrow keys.\nMovement is free.\nThen press E at the exit."}
+		"shoot": return {"objective":"Shoot both targets.\nCross the red scanner.","tip":"Aim with the mouse.\nEach shot costs $1.\nThe scanner costs $5."}
+		"dash": return {"objective":"Dash past the barrier.\nPay $2 at the exit.","tip":"Space: dash ($3).\nTry the equipment desk\nbefore your first fight."}
+	if config.get("shop",false): return {"objective":"Choose equipment.\nOr leave for free.","tip":"Press E at the desk.\nWeapons and upgrades\nare always optional."}
+	if config.get("exit",false): return {"objective":"Pay $50 to leave.","tip":"E: approve the payment.\nOvertime offers cash,\nbut risks your run."}
+	if config.get("boss",false): return {"objective":"Defeat the CEO.","tip":"Step aside for charges.\nLeave red fee zones.\nSave cash for the exit."}
+	var tip: String = "Move to dodge attacks.\nDesks block invoices.\nCollect dropped cash."
+	if not config.get("hazards",[]).is_empty(): tip = "Gold floor: get ready.\nRed floor: move away.\nA floor hit costs $5."
+	elif not config.get("tolls",[]).is_empty(): tip = "Gold tiles cost $1 each.\nGo around for free.\nTolls charge on entry."
+	elif config.has("atm"): tip = "ATM: pay $4, get $15.\nOne withdrawal only.\nKeep more than $4."
+	var objective: String = "Defeat all enemies.\nExpect more waves."
+	if goal.begins_with("ACCOUNT SETTLED"): objective = "Room cleared.\nE at the green exit."
+	if config.get("challenge_type","")=="survival": objective = "Survive the countdown.\nThen clear the enemies."
+	return {"objective":objective,"tip":tip}

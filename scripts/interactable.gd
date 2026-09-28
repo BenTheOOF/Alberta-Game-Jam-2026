@@ -6,7 +6,7 @@ extends Node2D
 signal celebrated
 signal advance_requested
 signal message(value: String, color: Color)
-@export_enum("door", "chest", "exit", "shortcut", "upgrade", "overtime", "atm", "loan") var kind: String = "door"
+@export_enum("door", "chest", "exit", "shortcut", "upgrade", "overtime", "atm", "loan", "shop") var kind: String = "door"
 @export var price: int = 8
 @export var title: String = "NEXT DEPARTMENT"
 @export var upgrade_id: String = ""
@@ -27,6 +27,7 @@ func prompt() -> String:
 		return "PURCHASED" if kind == "upgrade" else "TRANSACTION COMPLETE"
 	if locked:
 		return "COMPLETE THE OBJECTIVE SHOWN ABOVE TO CONTINUE"
+	if kind == "shop": return "[E] OPEN EQUIPMENT DESK / WEAPONS, UPGRADES & UTILITY"
 	if kind == "atm":
 		return "[E] PAY $4 SERVICE FEE / WITHDRAW $15 / ONE USE"
 	if kind == "loan":
@@ -46,6 +47,9 @@ func prompt() -> String:
 func interact() -> bool:
 	if used or locked or not Ledger.active:
 		return false
+	if kind == "shop":
+		advance_requested.emit()
+		return true
 	if kind == "loan":
 		if not Ledger.take_loan(): return false
 		used = true
@@ -104,7 +108,7 @@ func _deny(value: String) -> void:
 
 func _draw() -> void:
 	var color: Color = Palette.GOLD if kind == "chest" else Palette.MINT
-	if kind in ["upgrade","overtime","atm","loan"]:
+	if kind in ["upgrade","overtime","atm","loan","shop"]:
 		color = Palette.BLUE
 	if kind == "shortcut":
 		color = Palette.GOLD
@@ -119,7 +123,7 @@ func _draw() -> void:
 		draw_style_box(Palette.box(Palette.BG, color, 4), Rect2(-25, -14, 50, 32))
 		draw_rect(Rect2(-25, -14 if not used else -23, 50, 10), color)
 		draw_rect(Rect2(-4, -6, 8, 12), Palette.PAPER if not used else Palette.BG)
-	elif kind in ["upgrade","overtime","atm","loan"]:
+	elif kind in ["upgrade","overtime","atm","loan","shop"]:
 		draw_style_box(Palette.box(Palette.BG, color, 5), Rect2(-25, -30, 50, 55))
 		draw_rect(Rect2(-18, -23, 36, 26), color.darkened(0.7))
 		var symbol: String = {"speed":">>", "dash":"-1", "cashback":"+2", "insurance":"0!"}.get(upgrade_id, "+$")
@@ -134,6 +138,7 @@ func _draw() -> void:
 		draw_line(Vector2(-10, 0), Vector2(10, 0), color, 3)
 		draw_polyline(PackedVector2Array([Vector2(2, -8), Vector2(10, 0), Vector2(2, 8)]), color, 4, false)
 	var caption: String = "OPENED" if used else ("$%d" % price if price > 0 else "NO FEE")
+	if kind == "shop": caption = "[E] BROWSE"
 	if kind == "loan" and not used: caption = "+$25 / -$5 PER ROOM"
 	if kind == "atm" and not used: caption = "$4 FEE / $15 OUT"
 	if kind == "overtime":

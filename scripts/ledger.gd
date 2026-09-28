@@ -48,6 +48,8 @@ var overtime_points: int = 0
 var overtime_rooms: Dictionary = {}
 var cleared_rooms: Dictionary = {}
 var audit_left: float = 0.0
+var weapon_id: String = "standard"
+var owned_weapons: Dictionary = {"standard":true}
 
 
 # Restore every value that must not leak from one attempt into the next.
@@ -78,14 +80,28 @@ func reset_run() -> void:
 	overtime_rooms.clear()
 	cleared_rooms.clear()
 	audit_left = 0
+	weapon_id = "standard"
+	owned_weapons = {"standard":true}
 	money_changed.emit(money, 0, "OPENING BALANCE")
 	prices_changed.emit()
 
 
 # Prices are queried instead of stored on the player so inflation/upgrades take
 # effect immediately everywhere that displays or charges a price.
-func shot_cost() -> int:
-	return (2 if inflated else 1) + (1 if audit_left>0 else 0)
+func shot_cost(id: String = "") -> int:
+	var weapon: Dictionary = WeaponData.definition(weapon_id if id.is_empty() else id)
+	return weapon.cost + (1 if inflated else 0) + (1 if audit_left>0 else 0)
+
+# A weapon is bought once per account, then re-equipped free at any equipment desk.
+# Payment must finish without bankruptcy before ownership/equipment changes.
+func buy_weapon(id: String) -> bool:
+	if not active or not WeaponData.DEFINITIONS.has(id): return false
+	if not owned_weapons.has(id):
+		if not spend_money(WeaponData.DEFINITIONS[id].buy,"WEAPON PURCHASE") or not active: return false
+		owned_weapons[id] = true
+	weapon_id = id
+	prices_changed.emit()
+	return true
 
 func dash_cost() -> int:
 	return (4 if inflated else 3) - (1 if upgrades.has("dash") else 0) + (1 if audit_left>0 else 0)
@@ -129,7 +145,7 @@ func lose_money(amount: int, reason: String = "PAIN FEE") -> void:
 func pay_exit() -> bool:
 	if not can_afford(EXIT_FEE):
 		return false
-	# Settling the final invoice is atomic: exactly $50 wins with a $0 score.
+	# The final invoice is atomic: exactly $50 wins at $0 cash, preserving earned score.
 	# All other transactions reaching zero cause bankruptcy immediately.
 	active = false
 	spent += EXIT_FEE

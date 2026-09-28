@@ -29,6 +29,7 @@ var aura_wait: float = 0
 var buffed: bool = false
 var path_wait: float = 0
 var path_direction := Vector2.ZERO
+var activation_left: float = 0.6
 
 func _ready() -> void:
 	definition = EnemyData.scaled(kind,Ledger.difficulty_id,elite,overtime)
@@ -42,6 +43,10 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if not alive or not Ledger.active or not is_instance_valid(target): return
+	# Arrival markers already reserve a safe socket. This additional grace protects
+	# a player who moves toward an enemy between its placement and first physics tick.
+	activation_left = maxf(0,activation_left-delta)
+	if activation_left>0: return
 	age += delta
 	flash = maxf(0,flash-delta)
 	hit_wait = maxf(0,hit_wait-delta)
@@ -154,23 +159,16 @@ func _color() -> Color:
 
 func _draw() -> void:
 	var tint: Color = _color()
-	if kind==6: draw_set_transform(Vector2.ZERO,0,Vector2(1.5,1.5))
-	PixelArt.person(self,tint,Vector2.ZERO,int(age*7) if velocity.length()>1 else 0,kind,flash>0)
+	var sprite_scale: float = 1.5 if kind==6 else 1.0
+	draw_set_transform(Vector2.ZERO,0,Vector2.ONE*sprite_scale)
+	PixelArt.person(self,tint,Vector2.ZERO,int(age*7) if velocity.length()>1 else 0,kind,flash>0,elite)
 	draw_set_transform(Vector2.ZERO)
-	if kind==7:
-		draw_rect(Rect2(-17,-12,34,18),tint)
-		draw_rect(Rect2(-22,-15,10,4),Palette.PAPER)
-		draw_rect(Rect2(12,-15,10,4),Palette.PAPER)
-		draw_rect(Rect2(-4,-8,8,8),Palette.BG)
-	if kind==5: draw_string(Palette.font(),Vector2(-8,-22),"!",HORIZONTAL_ALIGNMENT_LEFT,-1,25,tint)
-	if kind==8: draw_rect(Rect2(-20,-22,40,42),Color(tint,0.15),false,2)
-	if elite:
-		draw_rect(Rect2(-7,-48,14,5),Palette.GOLD)
-		draw_rect(Rect2(-11,-54,4,9),Palette.GOLD)
-		draw_rect(Rect2(7,-54,4,9),Palette.GOLD)
-	if buffed: draw_rect(Rect2(-18,23,36,3),Color("f5b0d1"))
+	if buffed: draw_rect(Rect2(-18,30,36,3),Color("f5b0d1"))
 	var width: float = minf(max_hp*5,46)
-	draw_rect(Rect2(-width/2,-38,width,3),Palette.LINE)
-	draw_rect(Rect2(-width/2,-38,width*float(hit_points)/max_hp,3),tint)
+	var bar_y: float = PixelArt.top(kind,elite)*sprite_scale-12
+	draw_rect(Rect2(-width/2,bar_y,width,3),Palette.LINE)
+	draw_rect(Rect2(-width/2,bar_y,width*float(hit_points)/max_hp,3),tint)
+	if activation_left>0: draw_rect(Rect2(-20,34,40,3),Palette.BLUE)
 	if attack_state=="warning": draw_line(Vector2.ZERO,charge_direction*130,Palette.GOLD,4)
-	if definition.get("behavior","") in ["ranged","orbit","audit"] and fire_wait<0.5: draw_rect(Rect2(-5,-46,10,5),Palette.GOLD)
+	if definition.get("behavior","") in ["ranged","orbit","audit"] and fire_wait<0.5:
+		draw_rect(Rect2(-7,32,14,5),Palette.GOLD)

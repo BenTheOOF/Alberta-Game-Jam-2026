@@ -143,7 +143,7 @@ func _draw() -> void:
 		_sign(Vector2(300,260),"SPACE / DASH $3","DASH RIGHT THROUGH THE BARRIER",Palette.BLUE)
 		_sign(Vector2(748,265),"E / INTERACT","DOOR FEE $2",Palette.MINT)
 	elif config.get("shop",false):
-		_sign(Vector2(320,395),"YOUR LIFE. YOUR BENEFITS.","SAVE $50 FOR THE EXIT",Palette.BLUE)
+		_sign(Vector2(230,245),"YOUR TOOLS. YOUR TERMS.","Browse the equipment desk. All purchases are optional.",Palette.BLUE)
 
 func _checkpoint(at: Vector2, label: String, done: bool) -> void:
 	var tint: Color = Palette.MINT if done else Palette.BLUE
@@ -153,7 +153,7 @@ func _checkpoint(at: Vector2, label: String, done: bool) -> void:
 
 func _sign(at: Vector2, title: String, sub: String, tint: Color) -> void:
 	draw_string(Palette.font(),at,title,HORIZONTAL_ALIGNMENT_LEFT,-1,22,tint)
-	draw_string(Palette.font(),at+Vector2(0,24),sub,HORIZONTAL_ALIGNMENT_LEFT,-1,16,Palette.MUTED)
+	draw_string(Palette.body_font(),at+Vector2(0,28),sub,HORIZONTAL_ALIGNMENT_LEFT,-1,19,Palette.PAPER)
 
 # Build walkable cells once per authored layout, never per frame. A small clearance
 # keeps large enemies away from desk edges and leaves the player route connected.

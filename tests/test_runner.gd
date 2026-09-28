@@ -26,6 +26,8 @@ func _ready() -> void:
 	_test_generator()
 	await _test_ledger()
 	game = load("res://scenes/main.tscn").instantiate()
+	# Presentation/grace is exercised by polish_runner; these fixtures isolate mechanics.
+	game.introductions_enabled = false
 	add_child(game)
 	await get_tree().process_frame
 	check(game.mode=="menu","Title screen boots")
@@ -34,6 +36,7 @@ func _ready() -> void:
 	await _test_tutorial()
 	game.start_run()
 	game.load_room(3)
+	game.player.invulnerability = 0
 	await _test_player()
 	await _test_combat()
 	await _test_interactions()
@@ -117,6 +120,7 @@ func _test_player() -> void:
 	check(player.take_hit(true) and Ledger.money==before-clampi(ceili(before*0.2),4,20),"Tax uses rounded-up 20% with limits")
 	game.start_run()
 	game.load_room(3)
+	game.player.invulnerability = 0
 	await frames(2)
 	game.player.aim = Vector2.UP
 	before = Ledger.money
@@ -150,6 +154,7 @@ func _test_player() -> void:
 func _test_combat() -> void:
 	game.start_run()
 	game.load_room(3)
+	game.player.invulnerability = 0
 	await remove_enemies()
 	for coin in get_tree().get_nodes_in_group("coins"):
 		coin.queue_free()
@@ -175,8 +180,10 @@ func _test_combat() -> void:
 	check(blocked.hit_points==3,"World wall blocks bullets")
 	game.start_run()
 	game.load_room(3)
+	game.player.invulnerability = 0
 	await frames(2)
 	var chase = game._spawn_enemy(Vector2(700,390),0,6)
+	chase.activation_left = 0
 	var distance: float = chase.position.distance_to(game.player.position)
 	await frames(30)
 	check(chase.position.distance_to(game.player.position)<distance-30,"Collectors chase player")
@@ -184,6 +191,7 @@ func _test_combat() -> void:
 func _test_interactions() -> void:
 	game.start_run()
 	game.load_room(3)
+	game.player.invulnerability = 0
 	await remove_enemies()
 	var chest = game._interaction("chest",Vector2(220,390),5,"TEST")
 	seed(400)
@@ -200,6 +208,7 @@ func _test_interactions() -> void:
 	check(not denied.interact(),"Cannot interact after bankruptcy")
 	game.start_run()
 	game.load_room(3)
+	game.player.invulnerability = 0
 	await frames(2)
 	check(not game.door.interact() and Ledger.money==100,"Encounter door stays locked while enemies remain")
 	await finish_encounter()
@@ -213,7 +222,9 @@ func _test_interactions() -> void:
 	check(not game.door.interact() and Ledger.money==9,"Door rejects insufficient funds")
 	game.start_run()
 	game.load_room(3)
+	game.player.invulnerability = 0
 	game.load_room(5)
+	game.player.invulnerability = 0
 	await frames(2)
 	var shortcut
 	for item in game.interactables:
@@ -221,12 +232,13 @@ func _test_interactions() -> void:
 	check(shortcut.interact() and Ledger.money==85,"Paid shortcut works during uncleared encounter")
 	await frames(30)
 	check(Ledger.room_index==6 and game._living_enemies()==0,"Shortcut skips encounter into shop")
-	var upgrade
-	for item in game.interactables:
-		if item.kind=="upgrade" and item.upgrade_id=="speed": upgrade=item
-	check(upgrade.interact() and Ledger.upgrades.has("speed"),"Shop purchases an upgrade")
+	game._open_shop()
+	game.hud.shop_view._purchase("upgrade","speed")
+	check(Ledger.upgrades.has("speed"),"Shop purchases an upgrade")
 	before = Ledger.money
-	check(not upgrade.interact() and Ledger.money==before,"Upgrade terminal is single use")
+	game.hud.shop_view._purchase("upgrade","speed")
+	check(Ledger.money==before,"Upgrade card cannot charge twice")
+	game._close_shop()
 
 func finish_encounter() -> void:
 	game.room_age = float(Rooms.DATA[Ledger.room_index].get("duration",0))+1
@@ -280,6 +292,7 @@ func _test_tutorial() -> void:
 func _test_new_mechanics() -> void:
 	game.start_run()
 	game.load_room(Rooms.EXIT_INDEX)
+	game.player.invulnerability = 0
 	var player = game.player
 	check(Ledger.buy_upgrade("insurance",15) and Ledger.insurance,"Insurance can be purchased")
 	var before: int = Ledger.money
@@ -293,17 +306,21 @@ func _test_new_mechanics() -> void:
 	check(Ledger.money==before-20,"Tax damage capped at $20 even on a rich account")
 	game.start_run()
 	game.load_room(5)
+	game.player.invulnerability = 0
 	check(Ledger.take_loan() and Ledger.money==125,"Loan advances $25 immediately")
 	check(not Ledger.take_loan() and Ledger.money==125,"Only one loan per run")
 	game.load_room(6)
+	game.player.invulnerability = 0
 	check(Ledger.money==120,"Loan charges $5 on entering next room")
 	Ledger.enter_room(6)
 	Ledger.enter_room(6)
 	check(Ledger.money==120,"Interest cannot double-charge the same room")
 	game.load_room(7)
+	game.player.invulnerability = 0
 	check(Ledger.money==115,"Interest applies once to each subsequent room")
 	game.start_run()
 	game.load_room(4)
+	game.player.invulnerability = 0
 	var atm
 	for item in game.interactables:
 		if item.kind=="atm": atm=item
@@ -311,6 +328,7 @@ func _test_new_mechanics() -> void:
 	check(not atm.interact() and Ledger.money==111,"ATM cannot be farmed")
 	game.start_run()
 	game.load_room(5)
+	game.player.invulnerability = 0
 	game.room.charge_tolls(Vector2(440,390),Vector2(499,390))
 	check(Ledger.money==99,"Entering first toll tile charges $1")
 	for i in 30: game.room.charge_tolls(Vector2(499,390),Vector2(499,390))
@@ -321,6 +339,7 @@ func _test_new_mechanics() -> void:
 	check(Ledger.money==95,"Re-entering a toll tile is a new disclosed charge")
 	game.start_run()
 	game.load_room(Rooms.EXIT_INDEX)
+	game.player.invulnerability = 0
 	game.player.position = Vector2(200,390)
 	game._invoice(Vector2(300,390),Vector2.LEFT)
 	await frames(30)
@@ -330,11 +349,13 @@ func _test_new_mechanics() -> void:
 	await frames(30)
 	check(Ledger.money==96,"World wall blocks hostile invoices")
 	var banker = game._spawn_enemy(Vector2(450,390),3,8)
+	banker.activation_left = 0
 	banker.fire_wait = 0.01
 	await frames(4)
 	check(get_tree().get_nodes_in_group("invoices").size()>0,"Banker telegraphs and fires a ranged invoice")
 	game.start_run()
 	game.load_room(9)
+	game.player.invulnerability = 0
 	await remove_enemies()
 	game.player.position = Vector2(760,310)
 	game.room.previous_position = game.player.position
@@ -346,12 +367,14 @@ func _test_new_mechanics() -> void:
 	await frames(10)
 	var music_position: float = Sound.music.get_playback_position()
 	game.load_room(6)
+	game.player.invulnerability = 0
 	check(Sound.music.get_playback_position()>=music_position,"Room changes do not restart the music")
 	Sound.toggle_mute()
 	Sound.toggle_mute()
 	check(Sound.muted and AudioServer.is_bus_mute(0),"Mute controls both music and SFX")
 	game.start_run()
 	game.load_room(3)
+	game.player.invulnerability = 0
 	await remove_enemies()
 	game.wave_wait = 0.01
 	await frames(3)
@@ -360,29 +383,34 @@ func _test_new_mechanics() -> void:
 	check(game.pending_spawns.is_empty() and game._living_enemies()>0 and game.door.locked,"Telegraphed wave spawns and keeps exit locked")
 	game.start_run()
 	game.load_room(7)
+	game.player.invulnerability = 0
 	game.wave_index = game.total_waves
 	game.room_queue.clear()
-	game.room_age = 78.0
+	game.room_age = 0.0
 	await remove_enemies()
-	check(game.door.locked and Ledger.money==100,"Transfer remains locked until its timer settles")
-	game.room_age = 80.1
+	check(not game.door.locked and Ledger.money==112,"Former timed transfer clears immediately with its settlement bonus")
+	game.room_age = 0.1
 	await frames(3)
-	check(not game.door.locked and Ledger.money==112,"Cleared transfer pays its completion bonus")
+	check(not game.door.locked and Ledger.money==112,"Ordinary room completion never waits on elapsed time")
 	await frames(8)
 	check(Ledger.money==112,"Settlement bonus cannot be paid repeatedly")
 	game.start_run()
 	game.load_room(Rooms.EXIT_INDEX)
+	game.player.invulnerability = 0
 	var runner = game._spawn_enemy(game.player.position+Vector2(24,0),2,4)
+	runner.activation_left = 0
 	await frames(3)
 	check(Ledger.money==97,"Fast collection agent charges the lower $3 fee")
 	runner.queue_free()
 	game.start_run()
 	game.load_room(Rooms.EXIT_INDEX)
+	game.player.invulnerability = 0
 	Ledger.lose_money(95)
 	game.player.take_hit(true)
 	check(Ledger.money==1,"Tax minimum is $4 at a low balance")
 	game.start_run()
 	game.load_room(4)
+	game.player.invulnerability = 0
 	Ledger.lose_money(96)
 	for item in game.interactables:
 		if item.kind=="atm": item.interact()
@@ -419,6 +447,7 @@ func _test_endings() -> void:
 	check(game.mode=="lost" and get_tree().paused,"Bankruptcy shows loss and freezes game")
 	game.start_run()
 	game.load_room(Rooms.EXIT_INDEX)
+	game.player.invulnerability = 0
 	Ledger.lose_money(51)
 	check(not game.door.interact() and Ledger.money==49 and game.mode=="play","Final gate rejects underfunded player")
 	check(game.overtime_terminal.interact(),"Underfunded player can start overtime for free")
@@ -432,6 +461,7 @@ func _test_endings() -> void:
 	check(game.overtime_left==0 and Ledger.money==74,"Overtime terminal cannot pay twice")
 	game.start_run()
 	game.load_room(Rooms.EXIT_INDEX)
+	game.player.invulnerability = 0
 	Ledger.lose_money(50)
 	var old_bankruptcies: int = bankruptcy_count
 	check(game.door.interact() and game.mode=="won" and Ledger.money==0,"Exact-$50 final gate triggers victory UI")
@@ -515,6 +545,7 @@ func _test_expansion() -> void:
 	game.hud._select_difficulty("easy")
 	game.start_run(37)
 	game.load_room(Rooms.BOSS_INDEX)
+	game.player.invulnerability = 0
 	check(is_instance_valid(game.boss) and game.boss.max_hp==60 and game.door.locked,"CEO spawns at the fixed milestone and locks progression")
 	game.player.enabled = false
 	game.boss.take_damage(22)
@@ -533,6 +564,7 @@ func _test_expansion() -> void:
 	check(get_tree().get_nodes_in_group("boss_zones").is_empty(),"Boss defeat removes outstanding fee zones")
 	game.start_run()
 	game.load_room(Rooms.EXIT_INDEX)
+	game.player.invulnerability = 0
 	check(game.overtime_terminal.interact() and game.overtime_session.active,"Healthy accounts can choose optional overtime for extra score")
 	game.overtime_session.advance(0.1)
 	game._update_arrivals(1.4)
@@ -550,14 +582,17 @@ func _test_expansion() -> void:
 	check(not game.overtime_terminal.interact(),"Completed overtime terminal stays consumed")
 	game.start_run()
 	game.load_room(Rooms.EXIT_INDEX)
+	game.player.invulnerability = 0
 	game.overtime_terminal.interact()
 	Ledger.lose_money(999)
 	game.overtime_session.advance(31)
 	check(game.mode=="lost" and Ledger.money==0 and Ledger.overtime_shifts==0,"Bankruptcy during overtime gives no survival payout")
 	game.start_run()
 	game.load_room(Rooms.EXIT_INDEX)
+	game.player.invulnerability = 0
 	game.player.enabled = false
 	var auditor = game._spawn_enemy(Vector2(440,390),5)
+	auditor.activation_left = 0
 	auditor.fire_wait = 0
 	await frames(3)
 	check(Ledger.audit_left>4 and Ledger.shot_cost()==2 and Ledger.dash_cost()==4,"Auditor visibly adds one temporary service fee")
@@ -576,9 +611,12 @@ func _test_expansion() -> void:
 	check(heavy.attack_state=="recover","Enforcer exposes a recovery window after charge")
 	game.start_run()
 	game.load_room(Rooms.EXIT_INDEX)
+	game.player.invulnerability = 0
 	game.player.enabled = false
 	var clerk = game._spawn_enemy(Vector2(600,350),8)
+	clerk.activation_left = 0
 	var collector = game._spawn_enemy(Vector2(630,350),0)
+	collector.activation_left = 0
 	await frames(4)
 	check(collector.buffed,"Collection clerk buffs nearby living enemies")
 	clerk.take_damage(999)

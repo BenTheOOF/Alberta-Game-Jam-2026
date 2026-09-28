@@ -44,7 +44,7 @@ var last_popup_ms: int = -1000
 var popup_stack: int = 0
 var room_age: float = 0.0
 var wave_index: int = 0
-var wave_wait: float = 3.0
+var wave_wait: float = 0.15
 var pending_spawns: Array[Dictionary] = []
 var encounter_paid: bool = false
 var transition_tween: Tween
@@ -56,6 +56,10 @@ var room_queue: Array[Dictionary] = []
 var overtime_session: OvertimeSession
 var boss
 var total_waves: int = 0
+var seen_threats: Dictionary = {}
+var intro_then_overtime: bool = false
+# Focused physics fixtures can suppress presentation; real runs always enable it.
+var introductions_enabled: bool = true
 
 
 # One-time application setup. Most scene nodes are created in code so the exported
@@ -81,6 +85,12 @@ func _ready() -> void:
 	hud.restart_requested.connect(start_run)
 	hud.resume_requested.connect(toggle_pause)
 	hud.menu_requested.connect(show_menu)
+	hud.intro_finished.connect(_finish_introduction)
+	hud.shop_closed.connect(_close_shop)
+	hud.shop_overtime.connect(func():
+		_close_shop()
+		if is_instance_valid(overtime_terminal): overtime_terminal.interact()
+	)
 	Ledger.money_changed.connect(_on_money_changed)
 	Ledger.bankrupt.connect(_lose)
 	Ledger.won.connect(_win)
@@ -102,6 +112,7 @@ func start_run(seed_override: int = -1) -> void:
 	Input.set_default_cursor_shape(Input.CURSOR_CROSS)
 	Ledger.difficulty_id = hud.selected_difficulty
 	Ledger.reset_run()
+	seen_threats.clear()
 	director.begin(Ledger.difficulty_id,seed_override)
 	Ledger.run_seed = director.run_seed
 	hud.set_mode("play")
@@ -128,12 +139,15 @@ func _clear_world() -> void:
 	transitioning = false
 	room_age = 0
 	wave_index = 0
-	wave_wait = 3
+	wave_wait = 0.15
 	pending_spawns.clear()
 	encounter_paid = false
 	room_queue.clear()
 	overtime_session = null
 	boss = null
+	intro_then_overtime = false
+	hud.hide_introduction()
+	hud.hide_shop()
 
 
 # Build one department from its data entry. This is the central room factory:
@@ -146,7 +160,7 @@ func load_room(index: int) -> void:
 	hud.config = config
 	Ledger.clear_audit()
 	room_queue.assign(config.get("spawn_plan",[]))
-	wave_wait = 0.6
+	wave_wait = 0.4
 	total_waves = ceili(float(room_queue.size())/DifficultySettings.profile(Ledger.difficulty_id).cap)
 	room = ROOM.instantiate()
 	world.add_child(room)
@@ -159,6 +173,7 @@ func load_room(index: int) -> void:
 	player = PLAYER.instantiate()
 	player.position = Vector2(140,390)
 	actors.add_child(player)
+	if index>=3: player.invulnerability = 0.75
 	room.target = player
 	player.shooting_enabled = config.get("lesson","") != "move"
 	player.dashing_enabled = not config.get("lesson","") in ["move","shoot"]
@@ -190,24 +205,13 @@ func load_room(index: int) -> void:
 		loan.used = Ledger.loan_active
 	if config.has("refund"):
 		_spawn_coin(Vector2(config.refund[0],config.refund[1]),10,true)
-	if config.get("shop",false):
-		var speed = _interaction("upgrade",Vector2(330,300),15,"SPRINT PACKAGE")
-		speed.upgrade_id = "speed"
-		speed.detail = "+20% MOVEMENT SPEED"
-		var dash = _interaction("upgrade",Vector2(615,300),20,"DASH DISCOUNT")
-		dash.upgrade_id = "dash"
-		dash.detail = "DASHES COST $1 LESS"
-		var cashback = _interaction("upgrade",Vector2(330,495),25,"CASHBACK")
-		cashback.upgrade_id = "cashback"
-		cashback.detail = "+$2 PER NORMAL KILL"
-		var policy = _interaction("upgrade",Vector2(615,495),15,"INSURANCE POLICY")
-		policy.upgrade_id = "insurance"
-		policy.detail = "NEXT HIT FREE / ONE CLAIM"
-	for item in interactables:
-		if item.kind=="upgrade" and Ledger.upgrades.has(item.upgrade_id): item.used = true
+	if config.get("shop",false) or config.get("equipment",false):
+		var counter_at := Vector2(490,350) if config.get("shop",false) else Vector2(740,520)
+		var counter = _interaction("shop",counter_at,0,"EMPLOYEE EQUIPMENT")
+		counter.advance_requested.connect(_open_shop)
 	if config.get("inflation",false):
 		Ledger.apply_inflation()
-		hud.show_notice("MARKET UPDATE / SHOTS $2 / DASHES $%d" % Ledger.dash_cost(),Palette.GOLD,5.0)
+		hud.show_notice("MARKET UPDATE / SHOTS $%d / DASHES $%d" % [Ledger.shot_cost(),Ledger.dash_cost()],Palette.GOLD,5.0)
 	else:
 		hud.show_notice(config.subtitle,Palette.MINT,1.8)
 	if config.has("overtime_at"):
@@ -221,6 +225,43 @@ func load_room(index: int) -> void:
 	hud.remaining = _living_enemies()
 	door.locked = not _objective_complete()
 	Ledger.enter_room(index)
+	var threats: Array[int] = []
+	for entry in room_queue:
+		if not entry.kind in threats: threats.append(entry.kind)
+	if config.get("boss",false): threats = [-1,0,2,3]
+	_present_threats(threats)
+
+# Introduce the room's unseen roster together before any actor, invoice, hazard,
+# audit timer or overtime clock can advance. Seen state resets only on a new run.
+func _present_threats(kinds: Array, before_overtime: bool = false) -> bool:
+	if not introductions_enabled or not Ledger.active: return false
+	var unseen: Array[int] = []
+	for kind in kinds:
+		if kind!=4 and not seen_threats.has(kind) and not kind in unseen: unseen.append(kind)
+	if unseen.is_empty(): return false
+	for kind in unseen: seen_threats[kind] = true
+	intro_then_overtime = before_overtime
+	mode = "intro"
+	player.enabled = false
+	get_tree().paused = true
+	Sound.set_paused(true)
+	Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+	hud.show_introduction(unseen)
+	return true
+
+func _finish_introduction() -> void:
+	if mode!="intro": return
+	hud.hide_introduction()
+	get_tree().paused = false
+	mode = "play"
+	player.enabled = true
+	player.shoot_armed = false
+	player.invulnerability = maxf(player.invulnerability,0.75)
+	Sound.set_paused(false)
+	Input.set_default_cursor_shape(Input.CURSOR_CROSS)
+	if intro_then_overtime:
+		intro_then_overtime = false
+		_begin_overtime()
 
 
 # Small factory helpers below keep load_room() readable and ensure all spawned
@@ -274,12 +315,23 @@ func _invoice(at: Vector2, direction: Vector2, fee: int = 4, speed: float = 240.
 	actors.add_child(invoice)
 
 func _fire(at: Vector2, direction: Vector2) -> void:
-	var bullet = BULLET.instantiate()
-	bullet.position = at
-	bullet.direction = direction
-	bullet.impact.connect(func(point: Vector2,color: Color): burst(point,color,4))
-	actors.add_child(bullet)
-	burst(at+direction*28,Palette.MINT,3)
+	# The player already paid once. A spread trigger never charges per pellet.
+	var weapon: Dictionary = WeaponData.definition(Ledger.weapon_id)
+	for i in weapon.count:
+		var bullet = BULLET.instantiate()
+		bullet.position = at
+		var angle: float = (i-(weapon.count-1)/2.0)*weapon.spread+randf_range(-weapon.jitter,weapon.jitter)
+		bullet.direction = direction.rotated(angle)
+		bullet.speed = weapon.speed
+		bullet.damage = weapon.damage
+		bullet.lifetime = weapon.life
+		bullet.radius = weapon.radius
+		bullet.piercing = weapon.pierce
+		bullet.knockback = weapon.knockback
+		bullet.tint = weapon.color
+		bullet.impact.connect(func(point: Vector2,color: Color): burst(point,color,4))
+		actors.add_child(bullet)
+	burst(at+direction*28,weapon.color,3)
 
 
 # Per-frame run-level work: timer, camera shake, door locking, interaction
@@ -296,7 +348,7 @@ func _process(delta: float) -> void:
 	var remaining: int = _living_enemies()
 	hud.remaining = remaining
 	if is_instance_valid(door):
-		door.locked = not _objective_complete() or overtime_left>0
+		door.locked = not _objective_complete()
 	hud.goal = _goal_text()
 	hud.dash_fraction = 1.0 - player.dash_wait/player.dash_cooldown
 	_update_interaction()
@@ -369,13 +421,19 @@ func _request_next_room() -> void:
 	)
 	transition_tween.tween_property(hud,"fade",0.0,0.22)
 
+# Single authority for progression. Ordinary combat has no minimum duration.
+# The old generic duration check silently held empty Easy rooms for up to 90s.
+# Only explicitly labelled survival challenges and overtime may wait on a clock.
 func _objective_complete() -> bool:
+	if is_instance_valid(overtime_session) and overtime_session.active: return false
 	var config: Dictionary = current_config
 	var lesson: String = config.get("lesson","")
 	if lesson=="move": return Ledger.tutorial_flags.get("checkpoint2",false)
 	if lesson=="shoot": return _living_enemies()==0 and Ledger.tutorial_flags.get("health",false)
 	if lesson=="dash": return Ledger.tutorial_flags.get("dash_gate",false)
-	return _living_enemies()==0 and pending_spawns.is_empty() and room_queue.is_empty() and room_age>=config.get("duration",0.0) and (not config.get("boss",false) or Ledger.boss_defeated)
+	if config.get("boss",false): return Ledger.boss_defeated
+	if config.get("challenge_type","")=="survival" and room_age<config.get("duration",0.0): return false
+	return _living_enemies()==0 and pending_spawns.is_empty() and room_queue.is_empty()
 
 func _goal_text() -> String:
 	var config: Dictionary = current_config
@@ -383,13 +441,14 @@ func _goal_text() -> String:
 		"move": return "WASD / ARROWS: WALK THROUGH BLUE CHECKPOINTS / %d OF 2" % (2 if Ledger.tutorial_flags.get("checkpoint2",false) else (1 if Ledger.tutorial_flags.get("checkpoint1",false) else 0))
 		"shoot": return "LEFT CLICK: DESTROY BOTH TARGETS / EACH SHOT $1" if _living_enemies()>0 else ("WALK THROUGH THE RED SCANNER / MONEY IS ALSO HEALTH" if not Ledger.tutorial_flags.get("health",false) else "$0 = BANKRUPT / YOUR BALANCE PAYS FOR EVERY HIT / E AT DOOR")
 		"dash": return "SPACE: DASH RIGHT THROUGH THE BLUE BARRIER / COST $3" if not Ledger.tutorial_flags.get("dash_gate",false) else "TRANSACTION TRAINING / APPROACH THE DOOR / E TO PAY $2"
-	if config.get("shop",false): return "FOUR OPTIONAL BENEFITS / KEEP YOUR EXIT RESERVE"
+	if config.get("challenge_type","")=="survival": return "SURVIVE %ds / %d ENEMIES LEFT"%[maxi(0,ceili(config.duration-room_age)),_living_enemies()]
+	if config.get("shop",false): return "E AT THE EQUIPMENT DESK / WEAPONS, UPGRADES & UTILITY"
 	if config.get("exit",false): return "EXIT $50 / OPTIONAL OVERTIME: MORE CASH, MORE RISK"
 	if config.get("boss",false): return "DEFEAT THE CEO / DODGE WARNINGS / KEEP YOUR BALANCE ALIVE"
 	if _objective_complete(): return "ACCOUNT SETTLED / FIND THE GREEN DOOR"
-	var status: String = "%d OPEN CLAIMS / %d INCOMING" % [_living_enemies()+pending_spawns.size(),room_queue.size()]
-	if config.has("duration"):
-		status += " / SETTLES IN %ds" % maxi(0,ceili(config.duration-room_age))
+	var status: String = "%d ENEMIES / %d ARRIVING / %d IN NEXT WAVE" % [_living_enemies(),pending_spawns.size(),room_queue.size()]
+	if config.get("challenge_type","")=="survival":
+		status += " / SURVIVE %ds" % maxi(0,ceili(config.duration-room_age))
 	return status
 
 func _update_encounter(delta: float) -> void:
@@ -408,7 +467,7 @@ func _update_encounter(delta: float) -> void:
 	_update_arrivals(delta)
 	if not room_queue.is_empty() and pending_spawns.is_empty():
 		var ready: bool = false
-		if config.has("duration"):
+		if config.get("challenge_type","")=="survival":
 			var released: int = config.spawn_plan.size()-room_queue.size()
 			ready = room_age>=float(config.duration)*released/maxi(config.spawn_plan.size(),1)
 		elif _living_enemies()==0:
@@ -422,9 +481,11 @@ func _update_encounter(delta: float) -> void:
 				if not queue_enemy(entry.kind,entry.reward,entry.elite,false,entry.at): break
 				room_queue.pop_front()
 				count += 1
-			if count>0: wave_index += 1; wave_wait = 3.0
+			if count>0: wave_index += 1; wave_wait = 0.15
 	if not encounter_paid and _objective_complete():
 		encounter_paid = true
+		if not config.has("lesson") and not config.get("shop",false) and not config.get("exit",false) and not config.get("boss",false):
+			hud.show_notice("ACCOUNT SETTLED / EXIT OPEN",Palette.MINT,2)
 		var bonus: int = config.get("bonus",0)
 		if bonus>0:
 			Ledger.gain_money(bonus,"SETTLEMENT BONUS")
@@ -460,6 +521,8 @@ func show_menu() -> void:
 	hud.set_mode("menu")
 
 func _lose() -> void:
+	hud.hide_shop()
+	hud.hide_introduction()
 	mode = "lost"
 	Input.set_default_cursor_shape(Input.CURSOR_ARROW)
 	hud.set_mode("lost")
@@ -511,16 +574,21 @@ func burst(at: Vector2, color: Color, count: int = 6) -> void:
 		tween.chain().tween_callback(spark.queue_free)
 
 
-# Final-room recovery mechanic. A player below the $50 exit reserve can take a
-# short combat shift for $25 instead of becoming permanently stuck.
+# Optional survival shifts offer extra cash and score, including exit recovery.
 # Only cleared milestone rooms offer overtime. Any balance may enter, once per
 # terminal; payout requires survival, never clearing the stronger attackers.
 func _start_overtime() -> void:
-	if not _objective_complete() or not overtime_session.start(self):
+	if not _objective_complete() or Ledger.overtime_rooms.has(Ledger.room_index):
 		overtime_terminal.used = Ledger.overtime_rooms.has(Ledger.room_index)
 		hud.show_notice("CLEAR THIS ROOM FIRST / ONE SHIFT PER TERMINAL",Palette.GOLD)
 		return
+	if _present_threats([0,2,3,1,6,5],true): return
+	_begin_overtime()
+
+func _begin_overtime() -> void:
+	if not overtime_session.start(self): return
 	overtime_left = OvertimeSession.DURATION
+	door.locked = true
 	hud.show_notice("OVERTIME / SURVIVE 30s / KILLS ARE OPTIONAL",Palette.GOLD,4)
 
 func clear_overtime_actors() -> void:
@@ -626,3 +694,23 @@ func quit_game() -> void:
 	get_tree().paused = true
 	await get_tree().create_timer(0.2,true).timeout
 	get_tree().quit()
+
+# A single counter opens a paused storefront. Purchase clicks never reach Player.
+func _open_shop() -> void:
+	if mode!="play" or not Ledger.active or (is_instance_valid(overtime_session) and overtime_session.active): return
+	mode = "shop"
+	player.enabled = false
+	get_tree().paused = true
+	Sound.set_paused(true)
+	Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+	hud.open_shop(is_instance_valid(overtime_terminal))
+
+func _close_shop() -> void:
+	if mode!="shop": return
+	hud.hide_shop()
+	get_tree().paused = false
+	mode = "play"
+	player.enabled = true
+	player.shoot_armed = false
+	Sound.set_paused(false)
+	Input.set_default_cursor_shape(Input.CURSOR_CROSS)

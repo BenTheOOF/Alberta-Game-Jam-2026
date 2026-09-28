@@ -35,3 +35,20 @@ static func reward_for(kind: int, difficulty: String, elite: bool, shot_price: i
 	# leave room for mistakes, while missed bullets and financial damage still matter.
 	var sustainable: int = unit.hp*shot_price+2
 	return maxi(unit.reward,ceili(sustainable*DifficultySettings.profile(difficulty).reward))
+
+# Briefings describe the actual mode's hit fees. Longer lore stays out of combat UI.
+static func briefing(kind: int, difficulty: String) -> Dictionary:
+	if kind==-1:
+		return {"name":"THE CEO","color":Palette.GOLD,"ability":"Invoices, summons and three phases.","tip":"Dodge blue charges and red fee zones."}
+	var unit: Dictionary = scaled(kind,difficulty)
+	var descriptions: Dictionary = {
+		0:["Contact costs $%d."%unit.fee,"Keep moving; shoot from a distance."],
+		1:["Takes 20% cash ($4-$20 per hit).","Keep your distance; use cover."],
+		2:["Fast pursuer. Contact costs $%d."%unit.fee,"Aim ahead, or dash past it."],
+		3:["Fires invoices. Hit costs $%d."%unit.fee,"Move sideways; desks block shots."],
+		5:["Marks you: shots and dashes +$1.","Defeat it; marks expire after 5s."],
+		6:["Warned charge. Hit costs $%d."%unit.fee,"Step aside, then shoot as it recovers."],
+		7:["Circles you; fires $%d invoices."%unit.fee,"Keep moving; it has low health."],
+		8:["Gives nearby enemies +20% speed.","Defeat the clerk to remove its buff."]}
+	var lines: Array = descriptions.get(kind,["Harmless training target.","Aim with the mouse. Click to shoot."])
+	return {"name":unit.name,"color":unit.color,"ability":lines[0],"tip":lines[1]}

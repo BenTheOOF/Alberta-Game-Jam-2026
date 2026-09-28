@@ -35,7 +35,7 @@ static func safe(at: Vector2, config: Dictionary, player_at: Vector2, minimum: f
 	for key in ["atm","loan","overtime_at"]:
 		if config.has(key) and at.distance_to(Vector2(config[key][0],config[key][1]))<78: return false
 	if config.get("shop",false):
-		for item in [Vector2(330,300),Vector2(615,300),Vector2(330,495),Vector2(615,495)]:
+		for item in [Vector2(490,350)]:
 			if at.distance_to(item)<75: return false
 	return true
 
