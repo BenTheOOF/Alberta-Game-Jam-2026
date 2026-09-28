@@ -10,9 +10,8 @@ config_version=5
 
 [application]
 
-config/name="Pay the Price"
-run/main_scene="res://scenes/main.tscn"
-config/icon="res://assets/icon.svg"
+config/name="Alberta Game Jam 2026"
+run/main_scene="uid://b0n25nbk33gay"
 config/features=PackedStringArray("4.7")
 
 [autoload]
