@@ -35,7 +35,7 @@ func prompt() -> String:
 	if kind == "chest":
 		return "[E] OPEN $5  /  FIND $2–$20"
 	if kind == "exit":
-		return "[E] PAY $50 & LEAVE" if Ledger.money >= 50 else "EXIT NEEDS $50  /  YOU HAVE $%d" % Ledger.money
+		return "[E] PAY $%d & LEAVE"%Ledger.exit_fee() if Ledger.money >= Ledger.exit_fee() else "EXIT NEEDS $%d / YOU HAVE $%d" % [Ledger.exit_fee(),Ledger.money]
 	if kind == "overtime":
 		return "[E] OVERTIME / SURVIVE 30s / +$%d + SCORE / ONE SHIFT" % DifficultySettings.profile(Ledger.difficulty_id).ot_cash
 	if kind == "upgrade":
@@ -57,11 +57,11 @@ func interact() -> bool:
 		message.emit("LOAN ACCEPTED / +$25 / $5 INTEREST ON EACH NEW ROOM",Palette.GOLD)
 		return true
 	if kind == "exit":
-		if Ledger.can_afford(50): Sound.play("exit")
+		if Ledger.can_afford(Ledger.exit_fee()): Sound.play("exit")
 		if Ledger.pay_exit():
 			used = true
 			return true
-		_deny("YOU CAN'T AFFORD TO LEAVE. NEED $50. OVERTIME CAN HELP.")
+		_deny("NEED $%d TO LEAVE / OVERTIME CAN HELP"%Ledger.exit_fee())
 		return false
 	if kind == "overtime":
 		used = true

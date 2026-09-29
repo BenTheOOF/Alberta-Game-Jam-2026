@@ -17,7 +17,6 @@ signal claim_approved
 # "active" gates all transactions so nothing can charge/reward the player after
 # victory or bankruptcy.
 const STARTING_MONEY: int = 100
-const EXIT_FEE: int = 50
 var money: int = STARTING_MONEY
 var active: bool = false
 var room_index: int = 0
@@ -139,17 +138,21 @@ func lose_money(amount: int, reason: String = "PAIN FEE") -> void:
 	_check_bankruptcy()
 
 
-# The exit is intentionally special: paying exactly $50 leaves $0 but still wins.
+# The exit is intentionally special: paying exactly the current fee leaves $0 but still wins.
 # Therefore we deactivate the run BEFORE subtracting the fee and do not call the
 # normal bankruptcy check.
+func exit_fee() -> int:
+	return DifficultySettings.exit_fee(difficulty_id)
+
 func pay_exit() -> bool:
-	if not can_afford(EXIT_FEE):
+	var fee: int = exit_fee()
+	if not can_afford(fee):
 		return false
-	# The final invoice is atomic: exactly $50 wins at $0 cash, preserving earned score.
+	# The final invoice is atomic: exact payment wins at $0 cash, preserving earned score.
 	# All other transactions reaching zero cause bankruptcy immediately.
 	active = false
-	spent += EXIT_FEE
-	_change(-EXIT_FEE, "EXIT FEE")
+	spent += fee
+	_change(-fee, "EXIT FEE")
 	won.emit()
 	return true
 

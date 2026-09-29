@@ -24,6 +24,8 @@ func _ready() -> void:
 	game.show_menu()
 	game.queue_free()
 	Sound.stop_all()
+	# Give the audio thread real time to release playback during --fixed-fps runs.
+	OS.delay_msec(200)
 	await frames(12)
 	get_tree().quit(1 if failures else 0)
 
@@ -230,11 +232,11 @@ func _ui_copy() -> void:
 		game.hud.goal = game._goal_text()
 		var copy: Dictionary = game.hud._guidance()
 		for line in copy.objective.split("\n"):
-			var width: float = Palette.body_font().get_string_size(line,HORIZONTAL_ALIGNMENT_LEFT,-1,20).x
+			var width: float = Palette.body_font().get_string_size(line.to_upper(),HORIZONTAL_ALIGNMENT_LEFT,-1,Palette.body_size(20)).x
 			if width>228: print("OVERSIZE OBJECTIVE: ",line," width=",width)
 			fits = fits and width<=228
 		for line in copy.tip.split("\n"):
-			var width: float = Palette.body_font().get_string_size(line,HORIZONTAL_ALIGNMENT_LEFT,-1,18).x
+			var width: float = Palette.body_font().get_string_size(line.to_upper(),HORIZONTAL_ALIGNMENT_LEFT,-1,Palette.body_size(18)).x
 			if width>228: print("OVERSIZE TIP: ",line," width=",width)
 			fits = fits and width<=228
 	check(fits,"Every room's objective and tip lines fit the sidebar at readable font sizes")

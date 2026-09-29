@@ -228,7 +228,7 @@ func load_room(index: int) -> void:
 	var threats: Array[int] = []
 	for entry in room_queue:
 		if not entry.kind in threats: threats.append(entry.kind)
-	if config.get("boss",false): threats = [-1,0,2,3]
+	if config.get("boss",false): threats = [-1,0,2,3,6]
 	_present_threats(threats)
 
 # Introduce the room's unseen roster together before any actor, invoice, hazard,
@@ -357,6 +357,7 @@ func _process(delta: float) -> void:
 	hud.boss_hp = boss.hit_points if is_instance_valid(boss) and boss.alive else 0
 	hud.boss_max = boss.max_hp if is_instance_valid(boss) else 1
 	hud.boss_phase = boss.phase if is_instance_valid(boss) else 0
+	hud.boss_phase_name = boss.phase_name() if is_instance_valid(boss) else ""
 
 func _living_enemies() -> int:
 	var count: int = 0
@@ -437,13 +438,14 @@ func _objective_complete() -> bool:
 
 func _goal_text() -> String:
 	var config: Dictionary = current_config
+	if is_instance_valid(overtime_session) and overtime_session.active: return "JUST SURVIVE / %ds / EXIT OPENS AT ZERO"%ceili(overtime_session.left)
 	match config.get("lesson",""):
 		"move": return "WASD / ARROWS: WALK THROUGH BLUE CHECKPOINTS / %d OF 2" % (2 if Ledger.tutorial_flags.get("checkpoint2",false) else (1 if Ledger.tutorial_flags.get("checkpoint1",false) else 0))
 		"shoot": return "LEFT CLICK: DESTROY BOTH TARGETS / EACH SHOT $1" if _living_enemies()>0 else ("WALK THROUGH THE RED SCANNER / MONEY IS ALSO HEALTH" if not Ledger.tutorial_flags.get("health",false) else "$0 = BANKRUPT / YOUR BALANCE PAYS FOR EVERY HIT / E AT DOOR")
 		"dash": return "SPACE: DASH RIGHT THROUGH THE BLUE BARRIER / COST $3" if not Ledger.tutorial_flags.get("dash_gate",false) else "TRANSACTION TRAINING / APPROACH THE DOOR / E TO PAY $2"
 	if config.get("challenge_type","")=="survival": return "SURVIVE %ds / %d ENEMIES LEFT"%[maxi(0,ceili(config.duration-room_age)),_living_enemies()]
 	if config.get("shop",false): return "E AT THE EQUIPMENT DESK / WEAPONS, UPGRADES & UTILITY"
-	if config.get("exit",false): return "EXIT $50 / OPTIONAL OVERTIME: MORE CASH, MORE RISK"
+	if config.get("exit",false): return "EXIT $%d / OPTIONAL OVERTIME: MORE CASH, MORE RISK"%Ledger.exit_fee()
 	if config.get("boss",false): return "DEFEAT THE CEO / DODGE WARNINGS / KEEP YOUR BALANCE ALIVE"
 	if _objective_complete(): return "ACCOUNT SETTLED / FIND THE GREEN DOOR"
 	var status: String = "%d ENEMIES / %d ARRIVING / %d IN NEXT WAVE" % [_living_enemies(),pending_spawns.size(),room_queue.size()]
@@ -582,28 +584,33 @@ func _start_overtime() -> void:
 		overtime_terminal.used = Ledger.overtime_rooms.has(Ledger.room_index)
 		hud.show_notice("CLEAR THIS ROOM FIRST / ONE SHIFT PER TERMINAL",Palette.GOLD)
 		return
-	if _present_threats([0,2,3,1,6,5],true): return
+	if _present_threats([0,2,3,7,6,5],true): return
 	_begin_overtime()
 
 func _begin_overtime() -> void:
 	if not overtime_session.start(self): return
 	overtime_left = OvertimeSession.DURATION
 	door.locked = true
-	hud.show_notice("OVERTIME / SURVIVE 30s / KILLS ARE OPTIONAL",Palette.GOLD,4)
+	hud.show_notice("OVERTIME / JUST SURVIVE 30s / KILLS OPTIONAL",Palette.GOLD,4)
 
 func clear_overtime_actors() -> void:
 	for enemy in get_tree().get_nodes_in_group("overtime_enemies"):
 		enemy.alive = false
+		enemy.set_physics_process(false)
 		burst(enemy.position,Palette.GOLD,3)
 		enemy.queue_free()
 	for invoice in get_tree().get_nodes_in_group("invoices"):
-		if invoice.overtime: invoice.queue_free()
+		if invoice.overtime:
+			invoice.set_physics_process(false)
+			invoice.queue_free()
+	for zone in get_tree().get_nodes_in_group("overtime_zones"): zone.cancel()
 	for i in range(pending_spawns.size()-1,-1,-1):
 		if pending_spawns[i].overtime:
 			pending_spawns[i].marker.queue_free()
 			pending_spawns.remove_at(i)
 	overtime_left = 0
 	hud.overtime = 0
+	if is_instance_valid(door): door.locked = not _objective_complete()
 
 # Reserve a safe socket before scheduling a spawn. Reservations count towards the
 # cap, so multiple systems cannot oversubscribe it during the same frame.
@@ -624,7 +631,10 @@ func queue_enemy(kind: int, reward: int = -1, elite: bool = false, overtime: boo
 
 func _safe_socket(preferred: Vector2 = Vector2.ZERO, ignored_marker = null) -> Vector2:
 	var sockets: Array[Vector2] = RoomTemplates.available(current_config,player.position)
-	sockets.sort_custom(func(a: Vector2,b: Vector2): return a.distance_squared_to(player.position)>b.distance_squared_to(player.position))
+	if preferred!=Vector2.ZERO:
+		sockets.sort_custom(func(a: Vector2,b: Vector2): return a.distance_squared_to(preferred)<b.distance_squared_to(preferred))
+	else:
+		sockets.sort_custom(func(a: Vector2,b: Vector2): return a.distance_squared_to(player.position)>b.distance_squared_to(player.position))
 	if preferred in sockets:
 		sockets.erase(preferred)
 		sockets.push_front(preferred)
@@ -658,28 +668,47 @@ func _spawn_boss() -> void:
 	boss = BOSS.new()
 	boss.position = Vector2(740,390)
 	boss.target = player
+	boss.coordinator = self
 	actors.add_child(boss)
 	boss.invoice_fired.connect(_invoice)
-	boss.summon_requested.connect(func(kind: int): queue_enemy(kind,EnemyData.reward_for(kind,Ledger.difficulty_id,false,2)))
-	boss.zone_requested.connect(func(at: Vector2,fee: int):
-		var zone = FEE_ZONE.new()
-		zone.position = at.clamp(Vector2(100,210),Vector2(870,570))
-		zone.target = player
-		zone.fee = fee
-		actors.add_child(zone)
+	boss.summon_requested.connect(func(kind: int):
+		if boss_add_count()<DifficultySettings.profile(Ledger.difficulty_id).boss_adds:
+			queue_enemy(kind,EnemyData.reward_for(kind,Ledger.difficulty_id,false,2))
 	)
+	boss.zone_requested.connect(func(at: Vector2,fee: int,size_px: float,warning: float): spawn_fee_zone(at,fee,size_px,warning,false))
+	boss.hazards_cancelled.connect(_clear_boss_hazards)
 	boss.phase_changed.connect(func(_phase: int,notice: String): hud.show_notice(notice,Palette.GOLD,4))
 	boss.defeated.connect(_boss_down)
 	hud.show_notice("EXECUTIVE MANAGEMENT / THE CEO",Palette.GOLD,4)
 
+func boss_add_count() -> int:
+	return maxi(0,_living_enemies()-(1 if is_instance_valid(boss) and boss.alive else 0))+pending_spawns.size()
+
+func spawn_fee_zone(at: Vector2, fee: int, size_px: float, warning: float, overtime: bool) -> void:
+	var zone = FEE_ZONE.new()
+	zone.position = at.clamp(Vector2(80,180)+Vector2.ONE*size_px/2,Vector2(920,605)-Vector2.ONE*size_px/2)
+	zone.target = player
+	zone.fee = fee
+	zone.size_px = size_px
+	zone.warning = warning
+	zone.overtime = overtime
+	actors.add_child(zone)
+
+func _clear_boss_hazards() -> void:
+	for node in get_tree().get_nodes_in_group("boss_zones"): node.cancel()
+	for node in get_tree().get_nodes_in_group("invoices"):
+		node.set_physics_process(false)
+		node.queue_free()
+
 func _boss_down() -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		enemy.alive = false
+		enemy.set_physics_process(false)
 		enemy.queue_free()
-	for group in ["invoices","boss_zones"]:
-		for node in get_tree().get_nodes_in_group(group): node.queue_free()
+	_clear_boss_hazards()
 	for entry in pending_spawns: entry.marker.queue_free()
 	pending_spawns.clear()
+	if is_instance_valid(door): door.locked = not _objective_complete()
 	hud.show_notice("CEO DEFEATED / SEVERANCE PAID / FINAL EXIT UNLOCKED",Palette.MINT,5)
 	burst(Vector2(740,390),Palette.GOLD,30)
 

@@ -28,6 +28,11 @@ func budget_for(standard_room: int) -> int:
 func generate(index: int, money: int = 100) -> Dictionary:
 	if cache.has(index): return cache[index]
 	var config: Dictionary = Rooms.DATA[index].duplicate(true)
+	var settings: Dictionary = DifficultySettings.profile(difficulty)
+	config.memo = config.memo.replace("{exit_fee}",str(settings.exit_fee))
+	config.subtitle = config.subtitle.replace("{exit_fee}",str(settings.exit_fee))
+	if config.get("exit",false): config.fee = settings.exit_fee
+	if config.has("bonus"): config.bonus = ceili(config.bonus*settings.clear_bonus)
 	config.standard_room = maxi(0,index-2)
 	config.enemies = [] if index>=3 else config.enemies
 	config.waves = []
