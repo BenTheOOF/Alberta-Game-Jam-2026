@@ -153,7 +153,7 @@ func _checkpoint(at: Vector2, label: String, done: bool) -> void:
 
 func _sign(at: Vector2, title: String, sub: String, tint: Color) -> void:
 	draw_string(Palette.font(),at,title,HORIZONTAL_ALIGNMENT_LEFT,-1,22,tint)
-	draw_string(Palette.body_font(),at+Vector2(0,28),sub,HORIZONTAL_ALIGNMENT_LEFT,-1,19,Palette.PAPER)
+	draw_string(Palette.body_font(),at+Vector2(0,30),sub.to_upper(),HORIZONTAL_ALIGNMENT_LEFT,-1,24,Palette.PAPER)
 
 # Build walkable cells once per authored layout, never per frame. A small clearance
 # keeps large enemies away from desk edges and leaves the player route connected.

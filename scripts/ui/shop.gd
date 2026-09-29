@@ -91,15 +91,15 @@ func _input(event: InputEvent) -> void:
 		closed.emit()
 
 func _text(value: String, at: Vector2, size_px: int, color: Color, body: bool = false) -> void:
-	draw_string(Palette.body_font() if body else Palette.font(),at,value,HORIZONTAL_ALIGNMENT_LEFT,-1,size_px,color)
+	draw_string(Palette.font(),at,value.to_upper(),HORIZONTAL_ALIGNMENT_LEFT,-1,Palette.body_size(size_px) if body else size_px,color)
 
 func _draw() -> void:
 	draw_rect(Rect2(0,0,1280,720),Color(Palette.BG,0.97))
 	draw_style_box(Palette.box(Palette.PANEL,Palette.LINE),Rect2(64,40,1152,641))
 	_text("EMPLOYEE EQUIPMENT",Vector2(88,92),38,Palette.PAPER)
 	_text("Choose your tools. Every shot still has a price.",Vector2(90,128),21,Palette.MUTED,true)
-	_text("BALANCE $%d"%Ledger.money,Vector2(875,88),32,Palette.MINT if Ledger.money>=50 else Palette.RED)
-	_text("Keep $50 for the final exit.",Vector2(878,126),19,Palette.PAPER,true)
+	_text("BALANCE $%d"%Ledger.money,Vector2(875,88),32,Palette.MINT if Ledger.money>=Ledger.exit_fee() else Palette.RED)
+	_text("Exit reserve: $%d"%Ledger.exit_fee(),Vector2(878,126),19,Palette.PAPER,true)
 	for i in 3:
 		_text(["WEAPONS","UPGRADES","UTILITY"][i],Vector2(88+i*376,178),23,Palette.GOLD)
 	for card in cards:
@@ -115,10 +115,10 @@ func _draw() -> void:
 			name = data.name
 			effect = data.style
 			note = "FIRE $%d / pull | %.1f / sec"%[Ledger.shot_cost(card.id),1.0/data.interval]
-			state = "EQUIPPED" if equipped else ("EQUIP FREE" if Ledger.owned_weapons.has(card.id) else "BUY $%d"%data.buy)
+			state = "EQUIPPED" if equipped else ("EQUIP" if Ledger.owned_weapons.has(card.id) else "BUY $%d"%data.buy)
 		elif card.category=="overtime":
 			name = "OVERTIME"
-			effect = "Survive 30s. Killing is optional."
+			effect = "30s survival. Kills optional."
 			note = "+$%d + score | High risk"%DifficultySettings.profile(Ledger.difficulty_id).ot_cash
 			state = "USED" if Ledger.overtime_rooms.has(Ledger.room_index) else ("ENTER FREE" if has_overtime else "LATER")
 		else:
@@ -135,7 +135,7 @@ func _draw() -> void:
 		_text(note,at+Vector2(13,75),18,Palette.MUTED,true)
 	_text("MONEY = HEALTH",Vector2(854,467),23,Palette.GOLD)
 	_text("Purchases are optional.",Vector2(854,497),19,Palette.PAPER,true)
-	_text("Spending your last dollar",Vector2(854,527),19,Palette.MUTED,true)
+	_text("Spend your last dollar",Vector2(854,527),19,Palette.MUTED,true)
 	_text("ends the run.",Vector2(854,554),19,Palette.MUTED,true)
 	_text(feedback,Vector2(90,615),20,feedback_color,true)
-	_text("Click a card | Tab + Enter | Esc to close",Vector2(90,649),18,Palette.MUTED,true)
+	_text("Click / Tab + Enter | Esc: close",Vector2(90,649),18,Palette.MUTED,true)

@@ -3,7 +3,7 @@
 **Alberta Game Jam 2026 — Everything Has a Price.**
 
 Money is your health, ammunition, and stamina. Start with $100, survive a
-procedural corporate gauntlet, defeat the CEO, and keep $50 to buy your freedom.
+procedural corporate gauntlet, defeat the CEO, and keep the difficulty's exit reserve to buy your freedom ($50 / $90 / $140 / $200).
 Score tracks your performance separately. Optional overtime offers extra cash
 and points at the cost of thirty dangerous seconds.
 
@@ -59,7 +59,7 @@ and chest presence vary. Recent layouts and enemy types receive less weight.
 | 9 | Final audit encounter, $20 settlement |
 | 10 | Executive clearance, $18 settlement, optional overtime |
 | CEO | Dedicated three-phase boss; victory unlocks the exit area |
-| Exit | $50 to leave; one last optional overtime terminal |
+| Exit | Difficulty-based fee; one last optional overtime terminal |
 
 Each combat budget is `max(4, round((4 + standard_room * 2) * budget_scale))`.
 The generator spends that budget using unlocked enemy definitions. Extra claims
@@ -105,8 +105,9 @@ current price. Spending the final dollar still bankrupts the account.
 
 ## Difficulty
 
-Difficulty changes combat, rewards, and scoring; ordinary service prices remain
-consistent. Easy retains the previous basic enemy stats.
+Difficulty changes reactions, prediction, coordination, combat stats, rewards,
+exit fees, and scoring. Ordinary service prices remain consistent. Easy retains
+the previous basic enemy stats and mostly direct pursuit.
 
 | Setting | Easy | Normal | Hard | Brutal |
 | --- | ---: | ---: | ---: | ---: |
@@ -120,8 +121,13 @@ consistent. Easy retains the previous basic enemy stats.
 | Late-run elite chance | 4% | 10% | 19% | 30% |
 | Reward scale | 1.00× | 1.15× | 1.30× | 1.50× |
 | Final score multiplier | 1.00× | 1.50× | 2.00× | 3.00× |
-| CEO HP / cash reward | 60 / $30 | 75 / $35 | 95 / $40 | 120 / $45 |
-| Overtime cash / base bonus | $25 / 500 | $30 / 750 | $40 / 1100 | $50 / 1600 |
+| CEO HP / cash reward | 60 / $30 | 75 / $45 | 95 / $70 | 120 / $100 |
+| Exit fee | $50 | $90 | $140 | $200 |
+| Settlement bonus scale | 1.0× | 1.2× | 1.4× | 1.6× |
+| CEO summon cap | 2 | 3 | 4 | 5 |
+| Reaction interval | 0.65s | 0.40s | 0.25s | 0.14s |
+| Movement prediction | 0.10 | 0.35 | 0.65 | 0.90 |
+| Overtime cash / base bonus | $30 / 650 | $50 / 1000 | $75 / 1500 | $110 / 2200 |
 
 HP and damage round up. Elite rolls require spare budget, add two budget points,
 and are disabled before standard department 5; their chance ramps toward the
@@ -132,12 +138,12 @@ increased cash, and double enemy points.
 
 | Enemy | First standard room | Cost | Base HP | Behavior |
 | --- | ---: | ---: | ---: | --- |
-| Collector | 1 | 1 | 3 | Chases; $5 contact fee |
-| Runner | 1 | 1 | 2 | Fast chase; $3 contact fee |
-| Banker | 3 | 2 | 4 | Keeps medium range; fires $4 invoices |
+| Collector | 1 | 1 | 3 | Pursues or flanks; $5 contact fee |
+| Runner | 1 | 1 | 2 | Predicted, warned short burst; $3 contact fee |
+| Banker | 3 | 2 | 4 | Approaches, retreats, strafes; warned $4 invoices |
 | Tax Man | 5 | 3 | 4 | 20% balance hit, fixed $4–$20 clamp |
 | Debt Drone | 5 | 2 | 2 | Orbits and fires weak $2 invoices |
-| Auditor | 7 | 3 | 5 | Marks for five seconds: shots and dashes +$1 |
+| Auditor | 7 | 3 | 5 | Shelters behind allies; warned five-second +$1 mark |
 | Enforcer | 7 | 4 | 8 | Warned charge, $12 contact fee, vulnerable recovery |
 | Collection Clerk | 7 | 3 | 4 | Nearby enemies move 20% faster while supported |
 
@@ -153,11 +159,28 @@ clerk proximity, so killing the clerk removes the effect. Enemies navigate aroun
 cover; swept projectiles stop at furniture and walls. Damage grants 0.9 seconds
 of protection, and dashes have a 0.8-second cooldown.
 
-The **CEO** fires readable invoice fans and summons capped collectors. At 65% HP,
-management adds runners/bankers, a warned charge, and temporary service surcharges.
-At 30%, denser fans and warned floor fee zones raise the pressure. Defeat removes
-remaining boss attackers/projectiles/zones, pays severance, awards 1,000 base
-points, and unlocks the exit. The final $50 invoice still applies.
+`EnemySteering` samples visible movement after a mode-specific reaction delay.
+Prediction is partial and capped at 215 pixels; burst and projectile directions
+freeze at warning start. Actors accelerate into temporary direct, intercept,
+left-flank, or right-flank roles and separate from nearby allies. Bankers alternate
+direct/leading shots, with occasional warned spread on Hard/Brutal. Auditors can
+be denied by leaving range or breaking sight. Persistent curved movement favors
+interception and area control; it never directly damages or taxes the player.
+
+The **CEO** uses one weighted scheduler, with no consecutive repeated major attack:
+
+- **Performance Review**: fans, predicted invoice bursts, capped collectors.
+- **Hostile Takeover**, at 65% HP: locked charge, marked fee zones, multiangle crossfire.
+- **Liquidation**, at 30% HP: fixed sweeping arcs, rings with a marked escape gap,
+  targeted hazards, and mixed summons including enforcers.
+
+Phase changes cancel old hazards and provide 1.7 seconds of recovery plus a
+sound, announcement, color change, and named HUD phase. Every attack has a warning
+and a recovery window. Easy uses single attacks; other modes can pair charge/fan
+or zones/invoice at disclosed 18% / 38% / 65% scheduler chances. Summons count both
+living actors and reservations toward their separate difficulty cap. Defeat clears
+all attackers, invoices, zones, and reservations, pays severance, awards 1,000 base
+points, and opens the route to the final invoice.
 
 ## Overtime
 
@@ -165,22 +188,38 @@ Cleared shop, pre-boss, and exit rooms offer a free-entry **30-second survival
 shift at any balance**. Each terminal permits one attempt per run. Leaving is
 locked during the shift; killing every attacker is unnecessary.
 
-- 0–10 seconds: collectors and runners.
-- 10–20 seconds: bankers, tax men, and runners.
-- 20–30 seconds: heavy mixed pressure and elites.
+- 0–8 seconds: collectors and runners.
+- 8–16 seconds: bankers, drones, and runners.
+- 16–24 seconds: enforcers and interceptors.
+- 24–30 seconds: a dense mixed roster.
 
-Waves arrive every 3.6 / 3.0 / 2.5 / 2.0 seconds by mode, with a cap two higher
-than normal. Overtime enemies receive another 1.75× HP, 1.35× speed, 1.25× damage,
-and 1.30× attack rate on top of difficulty and any elite modifiers. They award
-kill points but **no individual cash or cashback**. Surviving earns the table's
-cash and base-point bonus plus five points per second survived. At expiry all
-overtime actors, invoices, and pending arrivals disappear. Bankruptcy ends the
-run without a completion payout.
+| Overtime modifier | Easy | Normal | Hard | Brutal |
+| --- | ---: | ---: | ---: | ---: |
+| Wave interval | 3.0s | 2.5s | 2.0s | 1.55s |
+| HP multiplier | 2.0× | 2.15× | 2.30× | 2.50× |
+| Speed multiplier | 1.65× | 1.90× | 2.15× | 2.40× |
+| Damage multiplier | 1.10× | 1.15× | 1.20× | 1.25× |
+| Attack-rate multiplier | 1.55× | 1.70× | 1.90× | 2.10× |
+| Floor warning | 1.25s | 1.15s | 1.0s | 0.90s |
+
+These modifiers only affect overtime actors, on top of difficulty/elite stats.
+The cap is two higher than normal. Spawn selection favors safe sockets near the
+observed route ahead while retaining the 250-pixel separation, 1.3-second arrival
+warning, and 0.6-second activation grace. Small temporary zones start after eight
+seconds; their count and area leave routes open. The sprint purchase keeps its
+full 20% player bonus; shift enemies receive only a further 6% response to it.
+
+The HUD says **JUST SURVIVE**, with a large final-five-second countdown and sound.
+Kills award points but **no individual cash or cashback**. Survival earns the
+listed cash/base bonus plus five points per second. At zero, cleanup disables
+enemy/projectile/zone physics immediately, removes pending arrivals, and unlocks
+the exit in the same update. No cleanup kills are required and no expired hazard
+can charge a late fee. Bankruptcy gives no completion payout.
 
 ## Economy and score
 
 Ordinary payments that reach $0 bankrupt the account. The final exit is atomic:
-exactly $50 still wins, with $0 remaining cash and the run's earned score intact.
+paying exactly the selected difficulty's fee still wins, with $0 remaining cash and the run's earned score intact.
 
 - **Chests:** $5 once; find $2, $4, $5, $7, $10, $15, or $20. Spending the final
   $5 loses before the payout. Net profit/loss is displayed.
@@ -199,7 +238,7 @@ exactly $50 still wins, with $0 remaining cash and the run's earned score intact
 - **Rewards:** normal drops use the larger of scaled base cash or the cost of
   accurate shooting plus a small margin, scaled by mode. Misses, damage, service
   fees, optional upgrades, and the boss still consume money.
-- **Doors:** required fees total $30 before the $50 exit. Collect drops before
+- **Doors:** required fees total $30 before the difficulty-based exit. Collect drops before
   leaving. Restart clears debt, upgrades, inflation, timers, actors, and score.
 
 `Ledger` owns the score formula:
@@ -218,9 +257,10 @@ clears, kills, CEO status, overtime shifts/kills, account totals, seed, and time
 
 ## Presentation and audio
 
-Code-drawn pixel sprites, Tiny5 headings, nearest filtering, block particles,
-price signs, and short fades preserve the retro corporate style. DejaVu Sans
-body text improves reading at embedded browser sizes. The sidebar shows the
+Code-drawn pixel sprites, Tiny5 throughout every UI surface, nearest filtering,
+block particles, price signs, and short fades preserve the retro corporate style.
+Uppercase copy, larger body sizes, spacing, and concise lines keep the pixel text
+readable at both 1280×720 and 960×540. The sidebar shows the
 current weapon and price, a short objective, and a contextual tip. Difficulty
 stays visible during the CEO health bar and large overtime timer.
 
@@ -235,9 +275,7 @@ There are 26 synthesized effects including boss, elite, and overtime cues.
 M controls the master bus. `tools/make_music.py` reproduces the gameplay track.
 
 Tiny5 is by the Tiny5 Project Authors under the SIL Open Font License; see
-`assets/fonts/OFL.txt`. DejaVu Sans is distributed under the Bitstream Vera /
-DejaVu terms in `assets/fonts/DejaVu-LICENSE.txt`. Both font licenses and Godot
-notices accompany exports. Existing `ground.tscn`,
+`assets/fonts/OFL.txt`. This font license and Godot notices accompany exports. Existing `ground.tscn`,
 tilesets, teammate movement work, and useful comments are preserved. Startup
 conflict markers and invalid asset paths were repaired.
 
@@ -251,6 +289,7 @@ conflict markers and invalid asset paths were repaired.
 | `scripts/generation/encounter_generator.gd` | One run RNG, cached layouts/compositions, budget allocation |
 | `scripts/rooms.gd` | Tutorial and fixed story/shop/boss/exit milestones |
 | `scripts/enemy.gd` | Data-driven ordinary actors and behavior dispatch |
+| `scripts/enemies/steering.gd` | Delayed observations, bounded prediction, circle recognition |
 | `scripts/enemies/boss.gd`, `fee_zone.gd` | CEO state machine and short-lived fee warnings |
 | `scripts/systems/overtime.gd` | Survival clock, staged pressure, completion request |
 | `scripts/ledger.gd` | Money, debt, upgrades, weapon ownership, current prices, centralized score |
@@ -290,9 +329,10 @@ From the repository, with Godot 4.7 named `godot`:
 godot --headless --editor --import --quit
 godot --headless res://tests/test_runner.tscn
 godot --headless res://tests/polish_runner.tscn
+godot --headless res://tests/combat_runner.tscn
 ```
 
-The suites report **172 core + 56 polish checks (228 total)**. Generator coverage samples **100 seeds per
+The suites report **172 core + 56 polish + 161 combat checks (389 total)**. Generator coverage samples **100 seeds per
 mode: 400 runs and 3,200 procedural combat rooms**, checking exact budgets,
 safe sockets, unlocks, determinism, varied layouts/compositions, and a viable
 accurate-shooting economy through the CEO and final exit. Sample mean combat
@@ -312,7 +352,30 @@ including stale duration data. It also covers protected/once-per-run briefings,
 CEO/overtime clock separation, early shop access, purchase and firing charges,
 free re-equipping, restart, heavy-round width/piercing/walls, and sidebar fit.
 
-`tests/capture.tscn` captures all areas and overlays with a graphics display.
+The combat suite verifies all four atomic exit fees, disclosed reserve text,
+reaction delay, bounded prediction, flanking, separation, locked shots/bursts,
+audit counterplay, all boss phases/attack choices/gaps/caps/cleanup, overtime
+stages/rewards/expiry, and preservation of normal stats and the sprint bonus.
+
+A further 400 economy samples assume 80% accuracy, sprint plus heavy purchases
+($39), $30 of dashes, $40 of damage, and sensible selection between owned standard
+and heavy weapons. They require no chests, loan, ATM, or overtime. Minimum cash
+remaining after reserving the exit is $78 / $196 / $344 / $726. This is a model
+of disclosed costs and rewards, not a claim about human aim or survival.
+
+Live 30-second physics trials drive a bot at the full upgraded 342 px/s without
+shooting or dashing. A high balance keeps measurement trials alive:
+
+| Route damage | Easy | Normal | Hard | Brutal |
+| --- | ---: | ---: | ---: | ---: |
+| Continuous circle | $46 | $70 | $73 | $198 |
+| Perimeter loop | $16 | $25 | $72 | $164 |
+
+A separate Brutal circle trial with the real $85 post-sprint balance goes bankrupt
+before payout. These fixed-seed trials establish that rote movement is intercepted;
+they do not replace human playtesting.
+
+`tests/capture.tscn` captures the changed UI surfaces at both actual window sizes.
 Set `PAY_THE_PRICE_CAPTURES` to an output directory, or use the default under the
 OS cache directory. `tests/enemy_gallery.tscn` renders every normal and elite
 enemy through animation and hit flash. Visual review covers those variants,
@@ -333,7 +396,7 @@ godot --headless --export-release Linux build/linux/PayThePrice.x86_64
 ```
 
 Build output and `.godot/` are ignored. Tests/tools are excluded from exports.
-Distribute `GODOT-LICENSE.txt`, `GODOT-COPYRIGHT.txt`, and both font licenses with
+Distribute `GODOT-LICENSE.txt`, `GODOT-COPYRIGHT.txt`, and the Tiny5 font license with
 the builds. This development pass is on **codex/pay-the-price** only.
 
 ## Setup

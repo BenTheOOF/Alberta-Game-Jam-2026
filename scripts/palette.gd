@@ -17,10 +17,12 @@ const GOLD := Color("f1c979")
 const BLUE := Color("83ccec")
 const PIXEL_FONT: FontFile = preload("res://assets/fonts/Tiny5-Regular.ttf")
 
-const BODY_FONT: FontFile = preload("res://assets/fonts/DejaVuSans.ttf")
 
 static func body_font() -> Font:
-	return BODY_FONT
+	return PIXEL_FONT
+
+static func body_size(original: int) -> int:
+	return maxi(22,original+4)
 
 static func font() -> Font:
 	return PIXEL_FONT

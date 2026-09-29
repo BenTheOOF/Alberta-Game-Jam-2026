@@ -48,6 +48,8 @@ func _ready() -> void:
 	get_tree().paused = false
 	game.queue_free()
 	Sound.stop_all()
+	# Give the audio thread real time to release playback during --fixed-fps runs.
+	OS.delay_msec(200)
 	await frames(12)
 	await get_tree().process_frame
 	get_tree().quit(1 if failures else 0)
@@ -351,7 +353,7 @@ func _test_new_mechanics() -> void:
 	var banker = game._spawn_enemy(Vector2(450,390),3,8)
 	banker.activation_left = 0
 	banker.fire_wait = 0.01
-	await frames(4)
+	await frames(40)
 	check(get_tree().get_nodes_in_group("invoices").size()>0,"Banker telegraphs and fires a ranged invoice")
 	game.start_run()
 	game.load_room(9)
@@ -456,9 +458,9 @@ func _test_endings() -> void:
 	game.overtime_session.left = 0.02
 	game.overtime_session.spawn_left = 1.0
 	await frames(5)
-	check(Ledger.money==74 and game.overtime_terminal.used,"Overtime pays $25 and consumes this terminal")
+	check(Ledger.money==79 and game.overtime_terminal.used,"Overtime pays $30 and consumes this terminal")
 	game.overtime_terminal.interact()
-	check(game.overtime_left==0 and Ledger.money==74,"Overtime terminal cannot pay twice")
+	check(game.overtime_left==0 and Ledger.money==79,"Overtime terminal cannot pay twice")
 	game.start_run()
 	game.load_room(Rooms.EXIT_INDEX)
 	game.player.invulnerability = 0
@@ -506,13 +508,13 @@ func _test_generator() -> void:
 				if index==3: fingerprints[str(config.spawn_plan)] = true
 			expected_money -= DifficultySettings.profile(mode).boss_hp*2
 			expected_money += DifficultySettings.profile(mode).boss_cash
-			solvent = solvent and expected_money>=50
+			solvent = solvent and expected_money>=DifficultySettings.exit_fee(mode)
 		totals[mode] = mode_cost
 		print("BALANCE %s: mean budget %.2f / enemies %d / elites %d (100 seeds)"%[mode,float(mode_cost)/800,enemy_count,elites])
 	check(safe,"400 generated runs use sockets clear of walls, props, hazards and player")
 	check(unlocks,"Enemy unlocks and elite introduction obey progression across 400 seeds")
 	check(budgets,"Generated compositions spend exactly their difficulty budgets")
-	check(solvent,"Every sampled mode can fund perfect-aim combat, boss and $50 exit without optional purchases")
+	check(solvent,"Every sampled mode can fund perfect-aim combat, boss and its difficulty exit without optional purchases")
 	check(layouts.size()==8,"All eight authored layout templates appear in sampled runs")
 	check(fingerprints.size()>50,"Different seeds create varied early encounter compositions")
 	check(totals.easy<totals.normal and totals.normal<totals.hard and totals.hard<totals.brutal,"Encounter budgets rise monotonically with difficulty")
@@ -552,10 +554,9 @@ func _test_expansion() -> void:
 	check(game.boss.phase==2,"CEO enters phase two near 65% HP")
 	game.boss.take_damage(21)
 	check(game.boss.phase==3,"CEO enters phase three near 30% HP")
-	game.boss.zone_left = 0
-	game.boss.state_left = 0
+	game.boss.begin_attack("zones")
 	await frames(3)
-	check(get_tree().get_nodes_in_group("boss_zones").size()>0 and game.boss.state=="warning","Final CEO phase produces fee telegraphs and a warned charge")
+	check(get_tree().get_nodes_in_group("boss_zones").size()>0 and game.boss.state=="warning","Final CEO phase produces a scheduled fee-zone warning")
 	for i in 30: game.queue_enemy(0,4)
 	check(game.pending_spawns.size()+game._living_enemies()<=6,"Boss summon reservations respect the live enemy cap")
 	game.boss.take_damage(999)
@@ -577,7 +578,7 @@ func _test_expansion() -> void:
 	check(Ledger.money==balance and Ledger.overtime_kills==1,"Overtime kills earn score but never farm cash or cashback")
 	game.overtime_session.advance(31)
 	await frames(3)
-	check(Ledger.money==balance+25 and Ledger.overtime_shifts==1 and Ledger.overtime_points==500,"Surviving overtime awards one cash and base-score bonus")
+	check(Ledger.money==balance+30 and Ledger.overtime_shifts==1 and Ledger.overtime_points==650,"Surviving overtime awards one cash and base-score bonus")
 	check(get_tree().get_nodes_in_group("overtime_enemies").is_empty() and game.pending_spawns.is_empty() and not game.door.locked,"Overtime expiry cleans all surviving attackers and unlocks exits")
 	check(not game.overtime_terminal.interact(),"Completed overtime terminal stays consumed")
 	game.start_run()
@@ -594,14 +595,14 @@ func _test_expansion() -> void:
 	var auditor = game._spawn_enemy(Vector2(440,390),5)
 	auditor.activation_left = 0
 	auditor.fire_wait = 0
-	await frames(3)
+	await frames(60)
 	check(Ledger.audit_left>4 and Ledger.shot_cost()==2 and Ledger.dash_cost()==4,"Auditor visibly adds one temporary service fee")
 	Ledger.apply_audit()
 	check(Ledger.shot_cost()==2,"Multiple audit marks refresh without stacking prices")
 	auditor.queue_free()
 	Ledger._process(7)
 	check(Ledger.shot_cost()==1 and Ledger.dash_cost()==3,"Audit surcharge expires cleanly")
-	var heavy = game._spawn_enemy(Vector2(650,390),6)
+	var heavy = game._spawn_enemy(Vector2(450,390),6)
 	heavy.action_left = 0
 	heavy._charge(0.01,Vector2.LEFT)
 	check(heavy.attack_state=="warning","Enforcer warns before charging")

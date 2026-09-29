@@ -38,6 +38,7 @@ var difficulty_buttons: Array[Button] = []
 var boss_hp: int = 0
 var boss_max: int = 1
 var boss_phase: int = 0
+var boss_phase_name: String = ""
 
 # Buttons are real Control nodes for input/focus; most other UI is drawn procedurally.
 func _ready() -> void:
@@ -152,7 +153,7 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _text(value: String, at: Vector2, size_px: int = 18, color: Color = Palette.PAPER, width: float = -1, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT) -> void:
-	draw_string(font, at, value, align, width, size_px, color)
+	draw_string(font, at, value.to_upper(), align, width, maxi(20,size_px), color)
 
 func _paragraph(value: String, at: Vector2, size_px: int, color: Color, spacing: float = 24) -> void:
 	var y: float = at.y
@@ -195,7 +196,7 @@ func _draw_title() -> void:
 	draw_dashed_line(Vector2(870,157),Vector2(1166,157),Palette.MUTED,1,5)
 	_text("STARTING BALANCE",Vector2(870,190),16,Palette.LINE)
 	_text("$100",Vector2(866,255),62,Palette.BG)
-	var rows := [["WASD / ARROWS","MOVE","FREE"],["MOUSE","AIM","FREE"],["LEFT CLICK","SHOOT","$1"],["SPACE","DASH","$3"],["E","INTERACT","VARIES"]]
+	var rows := [["WASD/ARROWS","MOVE","FREE"],["MOUSE","AIM","FREE"],["LEFT CLICK","SHOOT","$1"],["SPACE","DASH","$3"],["E","USE","VARIES"]]
 	var y: float = 298
 	for row in rows:
 		_text(row[0],Vector2(870,y),16,Palette.LINE)
@@ -204,7 +205,7 @@ func _draw_title() -> void:
 		y += 34
 	draw_dashed_line(Vector2(870,461),Vector2(1166,461),Palette.MUTED,1,5)
 	_text("EXIT FEE",Vector2(870,494),19,Palette.BG)
-	_text("$50",Vector2(1080,496),29,Palette.BG,86,HORIZONTAL_ALIGNMENT_RIGHT)
+	_text("$%d"%selected.exit_fee,Vector2(1080,496),29,Palette.BG,86,HORIZONTAL_ALIGNMENT_RIGHT)
 	_text("$0 BALANCE = BANKRUPTCY",Vector2(870,543),14,Color("9b3c42"))
 	_body("Prices subject to inflation.",Vector2(870,575),16,Palette.LINE)
 	for x in range(870,1167,5):
@@ -228,35 +229,39 @@ func _draw_live() -> void:
 	draw_line(Vector2(206,28),Vector2(206,83),Palette.LINE,1)
 	_text("DEPARTMENT %02d / %02d" % [room_index+1,Rooms.DATA.size()],Vector2(232,34),16,Palette.MUTED)
 	_text(config.get("name",""),Vector2(230,68),28,Palette.PAPER)
-	_text(config.get("subtitle",""),Vector2(232,89),14,Palette.MUTED)
+	if boss_hp>0 or overtime>0:
+		_body("THREE PHASE REVIEW" if boss_hp>0 else "OVERTIME ACTIVE",Vector2(232,89),16,Palette.MUTED,270)
+	else:
+		_body(config.get("subtitle",""),Vector2(232,89),16,Palette.MUTED,710)
 	for i in Rooms.DATA.size():
 		var color: Color = Palette.MINT if i <= room_index else Palette.LINE
 		draw_rect(Rect2(756+i*12,40,7,8),color)
 	_text("%02d:%02d"%[int(Ledger.elapsed)/60,int(Ledger.elapsed)%60],Vector2(865,78),16,Palette.MUTED)
 	if boss_hp>0:
 		draw_rect(Rect2(510,18,445,64),Palette.BG)
-		_text("THE CEO / PHASE %d / %d%%"%[boss_phase,ceili(100.0*boss_hp/boss_max)],Vector2(520,37),20,Palette.GOLD)
+		_text("%d / %s / %d%%"%[boss_phase,boss_phase_name,ceili(100.0*boss_hp/boss_max)],Vector2(520,37),20,Palette.GOLD)
 		draw_rect(Rect2(520,49,420,12),Palette.LINE)
 		draw_rect(Rect2(520,49,420*float(boss_hp)/boss_max,12),Palette.RED)
 	if overtime>0:
 		draw_rect(Rect2(510,18,445,64),Palette.BG)
-		_text("OVERTIME / SURVIVE %02d:%02d"%[int(overtime)/60,ceili(overtime)%60],Vector2(520,42),26,Palette.GOLD)
-		_text("KILLS OPTIONAL / BONUS +$%d"%difficulty.ot_cash,Vector2(520,70),16,Palette.PAPER)
+		_text("JUST SURVIVE",Vector2(520,43),28,Palette.GOLD)
+		_text(str(ceili(overtime)) if overtime<=5 else "%02d"%ceili(overtime),Vector2(850,76),60 if overtime<=5 else 40,Palette.RED if overtime<=5 else Palette.PAPER)
+		_text("30s SHIFT / BONUS +$%d"%difficulty.ot_cash,Vector2(520,70),20,Palette.PAPER)
 	# Account panel stays outside the arena, even while the camera shakes.
 	draw_style_box(Palette.box(Palette.PANEL,Palette.LINE,7),Rect2(980,24,268,624))
 	_text("AVAILABLE BALANCE",Vector2(1000,53),16,Palette.MUTED)
-	var cash_color: Color = Palette.RED if Ledger.money<50 else Palette.MINT
+	var cash_color: Color = Palette.RED if Ledger.money<Ledger.exit_fee() else Palette.MINT
 	_text("$%d" % Ledger.money,Vector2(995,116),60,Palette.PAPER if balance_flash>0.16 else cash_color)
 	_text("YOUR MONEY IS YOUR LIFE",Vector2(1000,142),16,Palette.MUTED)
 	draw_line(Vector2(1000,161),Vector2(1228,161),Palette.LINE,1)
 	_text("EXIT RESERVE",Vector2(1000,185),16,Palette.MUTED)
-	_text("$50",Vector2(1183,185),14,Palette.PAPER)
+	_text("$%d"%Ledger.exit_fee(),Vector2(1170,185),20,Palette.PAPER)
 	draw_rect(Rect2(1000,197,228,4),Palette.LINE)
-	draw_rect(Rect2(1000,197,228*minf(float(Ledger.money)/50,1),4),cash_color)
-	_text("RESERVE SECURED" if Ledger.money>=50 else "SHORT BY $%d" % (50-Ledger.money),Vector2(1000,222),16,cash_color)
+	draw_rect(Rect2(1000,197,228*minf(float(Ledger.money)/Ledger.exit_fee(),1),4),cash_color)
+	_text("RESERVE SECURED" if Ledger.money>=Ledger.exit_fee() else "SHORT BY $%d" % (Ledger.exit_fee()-Ledger.money),Vector2(1000,222),16,cash_color)
 	_text("CURRENT WEAPON",Vector2(1000,254),18,Palette.MUTED)
 	_text(WeaponData.definition(Ledger.weapon_id).name,Vector2(1000,282),22,Palette.PAPER)
-	_body("$%d per trigger pull"%Ledger.shot_cost(),Vector2(1000,311),20,Palette.GOLD)
+	_body("$%d / TRIGGER"%Ledger.shot_cost(),Vector2(1000,311),20,Palette.GOLD)
 	draw_line(Vector2(1000,329),Vector2(1228,329),Palette.LINE,1)
 	var guidance: Dictionary = _guidance()
 	_text("OBJECTIVE",Vector2(1000,357),20,Palette.MINT)
@@ -282,7 +287,7 @@ func _draw_live() -> void:
 	_text("AGJ / 26",Vector2(1180,712),14,Palette.LINE.lightened(0.15))
 	var status: String = goal
 	if overtime>0:
-		status = "OVERTIME / SURVIVE / ENEMIES DESPAWN WHEN TIME EXPIRES"
+		status = "JUST SURVIVE / EXIT OPENS AT ZERO"
 	if notice_left>0:
 		status = notice
 	if Ledger.audit_left>0: status = "AUDIT ACTIVE / SHOTS & DASH +$1 / %ds"%ceili(Ledger.audit_left)
@@ -346,10 +351,11 @@ func open_shop(available_overtime: bool) -> void:
 func hide_shop() -> void:
 	if is_instance_valid(shop_view): shop_view.hide()
 
-# Body copy uses a smooth font. Only narrow transient notices are ellipsized;
+# Body copy uses the same pixel font at a readable size. Only narrow transient notices are ellipsized;
 # objective and tip lines are deliberately short enough to show in full.
 func _body(value: String, at: Vector2, size_px: int = 18, color: Color = Palette.PAPER, width: float = -1, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT) -> void:
-	var copy: String = value
+	size_px = Palette.body_size(size_px)
+	var copy: String = value.to_upper()
 	if width>0 and Palette.body_font().get_string_size(copy,HORIZONTAL_ALIGNMENT_LEFT,-1,size_px).x>width:
 		while not copy.is_empty() and Palette.body_font().get_string_size(copy+"…",HORIZONTAL_ALIGNMENT_LEFT,-1,size_px).x>width:
 			copy = copy.left(copy.length()-1)
@@ -357,19 +363,19 @@ func _body(value: String, at: Vector2, size_px: int = 18, color: Color = Palette
 	draw_string(Palette.body_font(),at,copy,align,width,size_px,color)
 
 func _guidance() -> Dictionary:
-	if overtime>0: return {"objective":"Survive until 00:00.\nYou do not need kills.","tip":"Keep moving.\nShooting is optional.\nNo cash drops here."}
+	if overtime>0: return {"objective":"Just survive.\nExit opens at zero.","tip":"Change direction.\nGold = warning.\nKilling is optional."}
 	match config.get("lesson",""):
-		"move": return {"objective":"Walk through both\nblue checkpoints.","tip":"WASD or arrow keys.\nMovement is free.\nThen press E at the exit."}
-		"shoot": return {"objective":"Shoot both targets.\nCross the red scanner.","tip":"Aim with the mouse.\nEach shot costs $1.\nThe scanner costs $5."}
-		"dash": return {"objective":"Dash past the barrier.\nPay $2 at the exit.","tip":"Space: dash ($3).\nTry the equipment desk\nbefore your first fight."}
-	if config.get("shop",false): return {"objective":"Choose equipment.\nOr leave for free.","tip":"Press E at the desk.\nWeapons and upgrades\nare always optional."}
-	if config.get("exit",false): return {"objective":"Pay $50 to leave.","tip":"E: approve the payment.\nOvertime offers cash,\nbut risks your run."}
-	if config.get("boss",false): return {"objective":"Defeat the CEO.","tip":"Step aside for charges.\nLeave red fee zones.\nSave cash for the exit."}
-	var tip: String = "Move to dodge attacks.\nDesks block invoices.\nCollect dropped cash."
-	if not config.get("hazards",[]).is_empty(): tip = "Gold floor: get ready.\nRed floor: move away.\nA floor hit costs $5."
-	elif not config.get("tolls",[]).is_empty(): tip = "Gold tiles cost $1 each.\nGo around for free.\nTolls charge on entry."
-	elif config.has("atm"): tip = "ATM: pay $4, get $15.\nOne withdrawal only.\nKeep more than $4."
-	var objective: String = "Defeat all enemies.\nExpect more waves."
+		"move": return {"objective":"Pass both blue\ncheckpoints.","tip":"WASD / arrows.\nMovement is free.\nE: use the exit."}
+		"shoot": return {"objective":"Shoot 2 targets.\nUse red scanner.","tip":"Aim with the mouse.\nEach shot costs $1.\nScanner fee: $5."}
+		"dash": return {"objective":"Dash past gate.\nPay $2 at the exit.","tip":"Space: dash ($3).\nTry the shop desk.\nBefore combat."}
+	if config.get("shop",false): return {"objective":"Choose equipment.\nOr leave for free.","tip":"Press E at the desk.\nGear is optional.\nBuy once per run."}
+	if config.get("exit",false): return {"objective":"Pay $%d to leave."%Ledger.exit_fee(),"tip":"E: pay to leave.\nOvertime = cash.\nRisk: bankruptcy."}
+	if config.get("boss",false): return {"objective":"Defeat the CEO.","tip":"Juke blue charges.\nAvoid red zones.\nSave exit cash."}
+	var tip: String = "Change direction.\nDesks block shots.\nCollect the cash."
+	if not config.get("hazards",[]).is_empty(): tip = "Gold floor warns.\nRed floor hurts.\nFloor hit: $5."
+	elif not config.get("tolls",[]).is_empty(): tip = "Gold tiles: $1.\nWalk around free.\nPay when entering."
+	elif config.has("atm"): tip = "ATM: pay $4, get $15.\nOne use per room.\nKeep more than $4."
+	var objective: String = "Clear all foes.\nMore waves next."
 	if goal.begins_with("ACCOUNT SETTLED"): objective = "Room cleared.\nE at the green exit."
-	if config.get("challenge_type","")=="survival": objective = "Survive the countdown.\nThen clear the enemies."
+	if config.get("challenge_type","")=="survival": objective = "Survive the timer.\nThen clear enemies."
 	return {"objective":objective,"tip":tip}
